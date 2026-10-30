@@ -1,0 +1,989 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="data:,">
+<title>Planning impression LVSL</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600;700&display=swap">
+<style>
+/* Layout : en-tête, planning machines × heures (scroll horizontal), liste des OF en dessous. Même famille visuelle que le planning PDD, accent bleu ardoise LVSL. */
+:root{--bg:#f4f4f1;--surface:#ffffff;--ink:#1b1d1f;--muted:#7c7f80;--line:#dcdcd6;--line2:#ecece7;--accent:#2d5875;--accent-ink:#ffffff;--soft:#eef2f5;--lunch:#e7e6e0;--done:#c9c9c4;--done-ink:#6d6d68;--bad:#b3261e;--ok:#2f6b3a;--okbg:#e2efe2;--kobg:#f8e9d0;--ko:#8a5a0b;--wait:#ffffff;
+--sel-c:#111111;--f-sans:'IBM Plex Sans',system-ui,sans-serif;--f-mono:'IBM Plex Mono',ui-monospace,monospace}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--sel-c:#f2f2f2;--bg:#15181a;--surface:#1e2225;--ink:#e9eae6;--muted:#9a9e9f;--line:#33393d;--line2:#272c2f;--accent:#7fb0d3;--accent-ink:#0f1a22;--soft:#1f2a31;--lunch:#23282b;--done:#3e4245;--done-ink:#a9aca8;--bad:#ff8a80;--ok:#9fd3a6;--okbg:#20352a;--kobg:#3a2f18;--ko:#f0c47a;--wait:#1e2225;color-scheme:dark}}
+:root[data-theme="dark"]{--sel-c:#f2f2f2;--bg:#15181a;--surface:#1e2225;--ink:#e9eae6;--muted:#9a9e9f;--line:#33393d;--line2:#272c2f;--accent:#7fb0d3;--accent-ink:#0f1a22;--soft:#1f2a31;--lunch:#23282b;--done:#3e4245;--done-ink:#a9aca8;--bad:#ff8a80;--ok:#9fd3a6;--okbg:#20352a;--kobg:#3a2f18;--ko:#f0c47a;--wait:#1e2225;color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font:13px/1.4 var(--f-sans)}
+*{box-sizing:border-box}
+#root,.app{height:100%;display:flex;flex-direction:column;min-height:0}
+.top{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding-block:12px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));background:var(--surface);border-bottom:1px solid var(--line)}
+.eyebrow{font:600 10px var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+h1{margin:2px 0 0;font-size:20px;font-weight:700;text-wrap:balance}
+h2{font-size:14px;margin:0}h2 small{font-weight:400;color:var(--muted);margin-left:6px}
+h3{margin:2px 0 4px;font-size:18px}h4{margin:18px 0 8px;font-size:13px}
+.actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn{padding:6px 13px;border-radius:5px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 12px var(--f-sans);cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--soft)}.btn:focus-visible,.ib:focus-visible,.bar:focus-visible,.chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}.btn-primary:hover{background:var(--accent);filter:brightness(1.1)}
+.btn-danger{color:var(--bad);border-color:var(--bad)}.btn.sm{padding:3px 8px;font-size:11px}.btn:disabled{opacity:.5;cursor:default}
+.file{position:relative;overflow:hidden}.file input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.inp{padding:6px 9px;border-radius:5px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:13px var(--f-sans);width:100%}
+.inp:focus{outline:none;border-color:var(--accent)}.inp.n{text-align:right;font-variant-numeric:tabular-nums}.zoom{width:auto}
+.lbl{display:block;font:10px var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.ib{border:0;background:none;color:var(--muted);cursor:pointer;padding:2px 5px;font-size:11px;border-radius:4px}.ib:hover{background:var(--soft);color:var(--ink)}
+/* Planning */
+.gantt{flex:1 1 58%;min-height:240px;display:flex;flex-direction:column;background:var(--surface);border-bottom:1px solid var(--line);min-width:0}
+.gscroll{flex:1;overflow:auto;position:relative}
+.ginner{position:relative}
+.ghead{display:flex;position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+.corner{width:170px;flex:none;position:sticky;left:0;z-index:6;background:var(--surface);padding:8px 12px;font:600 10px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border-right:1px solid var(--line)}
+.days{position:relative;height:46px}
+.day{position:absolute;top:0;bottom:0;border-left:1px solid var(--line)}.day.wk{border-left:3px double var(--line)}
+.day.today .dlab{color:var(--accent);font-weight:700}
+.dlab{padding:5px 8px 2px;font-size:11px;font-weight:600;text-transform:capitalize;white-space:nowrap;overflow:hidden}
+.hrs{display:flex;font:10px var(--f-mono);color:var(--muted)}.hrs span{padding-left:3px;border-left:1px solid var(--line2);flex:none;overflow:hidden}.hrs span.midi{background:var(--lunch)}
+.grow{display:flex;height:46px;border-bottom:1px solid var(--line2)}
+.rlab{width:170px;flex:none;position:sticky;left:0;z-index:4;background:var(--surface);padding:0 12px;display:flex;flex-direction:column;justify-content:center;font-weight:600;border-right:1px solid var(--line)}
+.rlab small{font-weight:400;color:var(--muted);font-size:10px}
+.rtrack{position:relative}
+.gday{position:absolute;top:0;bottom:0;border-left:1px solid var(--line);background-image:linear-gradient(to right,var(--line2) 1px,transparent 1px)}
+.gday.wk{border-left:3px double var(--line)}
+.lunch{position:absolute;top:0;bottom:0;background:repeating-linear-gradient(45deg,var(--lunch) 0 4px,transparent 4px 8px)}
+.nowline{position:absolute;top:0;bottom:0;width:2px;background:var(--bad);z-index:3;pointer-events:none}
+.bar{position:absolute;top:7px;height:32px;border-radius:4px;background:var(--bg);background:var(--bg-bar,var(--bg));background-color:var(--bg);color:var(--fg);border:1px solid color-mix(in srgb,var(--fg) 30%,transparent);font-size:11px;font-weight:600;overflow:hidden;cursor:grab;display:flex;align-items:center;touch-action:none;user-select:none;z-index:2}
+.bar{background-color:var(--bg)}
+.bar span{padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:relative}
+.bar .launch,.sw.launch{position:absolute;left:0;top:0;bottom:0;background:color-mix(in srgb,var(--fg) 35%,transparent)}
+.bar.hatch{background-image:repeating-linear-gradient(135deg,transparent 0 5px,rgba(0,0,0,.2) 5px 8px)}
+.bar.done{background:var(--done)!important;background-image:none;color:var(--done-ink);border-color:var(--done);cursor:pointer}
+.bar.late{border-bottom:7px solid var(--bad)}
+.bar.pinned::after{content:'📌';position:absolute;right:2px;top:1px;font-size:9px}
+.waits .rtrack{height:100%}
+.wait{position:absolute;height:20px;border-radius:10px;border:1.5px dashed var(--fg);background:color-mix(in srgb,var(--bg) 45%,var(--wait));color:var(--fg);font-size:10px;display:flex;align-items:center;overflow:hidden;z-index:2}
+.wait span{padding:0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;padding:7px max(16px,env(safe-area-inset-right,0px)) 7px max(16px,env(safe-area-inset-left,0px));border-top:1px solid var(--line);font-size:11px;color:var(--muted)}
+.legend span{display:flex;align-items:center;gap:6px}.legend .hint{margin-left:auto}
+.sw{display:inline-block;position:relative;width:22px;height:11px;border-radius:2px;background:#cfe0f2;border:1px solid #9bb4cc}
+.sw.hatch{background-image:repeating-linear-gradient(135deg,transparent 0 3px,rgba(0,0,0,.25) 3px 5px)}.sw.done{background:var(--done);border-color:var(--done)}
+.sw.late{border-bottom:5px solid var(--bad)}.sw.launch{--fg:#14324f;width:22px;position:relative}.sw.midisw{background:repeating-linear-gradient(45deg,var(--lunch) 0 3px,var(--surface) 3px 6px);border-color:var(--line)}.sw.selsw{outline:3px solid var(--sel-c);outline-offset:1px}.sw.waitsw{border:1.5px dashed #14324f;border-radius:6px;background:transparent}
+/* Liste OF */
+.oflist{flex:1 1 42%;min-height:160px;display:flex;flex-direction:column;min-width:0}
+.olhead{padding:10px max(16px,env(safe-area-inset-right,0px)) 6px max(16px,env(safe-area-inset-left,0px))}
+.tblwrap{overflow:auto;min-width:0}
+.oflist .tblwrap{flex:1;padding:0 max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px))}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th{font:600 10px var(--f-mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted);text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0;background:var(--bg)}
+td{padding:6px 8px;border-bottom:1px solid var(--line2);white-space:nowrap;vertical-align:middle}
+.n{text-align:right;font-variant-numeric:tabular-nums}.tt{font-weight:600;white-space:normal;min-width:160px}
+tr.ofrow td{background:var(--bg);color:var(--fg);border-bottom:2px solid var(--surface)}
+tr.ofrow{cursor:pointer}tr.ofrow:hover td{filter:brightness(.96)}
+tr.ofrow td:first-child{border-radius:6px 0 0 6px}tr.ofrow td:last-child{border-radius:0 6px 6px 0}
+tr.ofrow.sel td{box-shadow:inset 0 3px 0 var(--sel-c),inset 0 -3px 0 var(--sel-c)}tr.ofrow.sel td:first-child{box-shadow:inset 3px 3px 0 var(--sel-c),inset 0 -3px 0 var(--sel-c)}tr.ofrow.sel td:last-child{box-shadow:inset -3px 3px 0 var(--sel-c),inset 0 -3px 0 var(--sel-c)}
+tr.rlate td:first-child{box-shadow:inset 8px 0 0 var(--bad)}
+tr.ofrow .muted{color:var(--fg);opacity:.65}tr.ofrow .ib{color:var(--fg)}
+tr.ofrow .src{background:rgba(255,255,255,.6);color:var(--fg)}tr.ofrow .tag{background:rgba(255,255,255,.6);color:var(--fg)}
+tr.ofrow .prog{background:rgba(255,255,255,.6)}tr.ofrow .prog i{background:var(--fg)}
+tr.ofrow .btn{background:rgba(255,255,255,.75);color:#1b1d1f;border-color:rgba(0,0,0,.15)}
+.bar.foc,.wait.foc{outline:3px solid var(--sel-c);outline-offset:1px;z-index:4}.wait{cursor:pointer}
+.olhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap}tr.ofrow td.bad{color:var(--bad);font-weight:700}
+.prio{white-space:nowrap}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;border:1px solid;margin-right:6px;vertical-align:-1px}
+.src{margin-left:6px;font:600 9px var(--f-mono);padding:1px 5px;border-radius:3px;background:var(--soft);color:var(--accent)}
+.tag{margin-left:6px;font:600 9px var(--f-mono);padding:1px 5px;border-radius:3px;background:var(--line2);color:var(--muted);text-transform:uppercase}
+.chip{border:0;border-radius:10px;padding:2px 9px;font:600 11px var(--f-sans);cursor:pointer}.chip.ok{background:var(--okbg);color:var(--ok)}.chip.ko{background:var(--kobg);color:var(--ko)}
+.prog{display:inline-block;width:46px;height:6px;border-radius:3px;background:var(--line2);vertical-align:middle;overflow:hidden}.prog i{display:block;height:100%;background:var(--accent)}
+.muted{color:var(--muted)}.acts{display:flex;gap:4px}
+/* Fenêtres */
+.overlay{position:fixed;inset:0;background:rgba(10,12,14,.45);z-index:50;display:flex;align-items:flex-start;justify-content:center;padding:max(16px,env(safe-area-inset-top,0px)) 16px 16px;overflow:auto}
+.modal{background:var(--surface);border-radius:10px;width:min(980px,100%);margin-top:3vh;box-shadow:0 20px 60px rgba(0,0,0,.35);display:flex;flex-direction:column;max-height:92vh}
+.modal.small{width:min(1100px,100%)}
+.mhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:16px 20px 10px;border-bottom:1px solid var(--line)}
+.mbody{padding:14px 20px;overflow:auto;min-height:0}.mfoot{display:flex;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid var(--line)}
+.x{font-size:15px}
+.g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 14px}.g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px}
+@media (max-width:700px){.g3,.g2{grid-template-columns:minmax(0,1fr)}.legend .hint{margin-left:0}}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-bottom:12px;flex-wrap:wrap}.seg button{border:0;background:var(--surface);color:var(--ink);padding:6px 12px;font:600 12px var(--f-sans);cursor:pointer}.seg button.on{background:var(--accent);color:var(--accent-ink)}
+.mhead .seg{margin:0}
+.checks{display:flex;flex-wrap:wrap;gap:8px 22px;margin:14px 0 4px}.checks label{display:flex;gap:6px;align-items:center}
+.note{color:var(--muted);font-size:12px;margin:8px 0}.warn{color:var(--ko);background:var(--kobg);padding:6px 10px;border-radius:5px;font-size:12px}
+.addrow{display:flex;gap:8px;margin:10px 0}
+.optbl td{white-space:normal}tr.focusop td{background:var(--soft);box-shadow:inset 0 2px 0 var(--sel-c),inset 0 -2px 0 var(--sel-c)}.donechk{display:flex;gap:6px;align-items:center;white-space:nowrap}.optbl .inp{min-width:70px}.info{display:block;color:var(--muted);font-size:10px;font-family:var(--f-mono)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.plist{list-style:none;padding:0;margin:0;columns:2 260px}.plist li{display:flex;justify-content:space-between;align-items:center;padding:4px 6px;border-bottom:1px solid var(--line2);break-inside:avoid}
+.pop{background:var(--surface);border-radius:10px;padding:18px 20px;width:min(440px,100%);margin-top:12vh;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.pop .sub{margin:0 0 10px;color:var(--muted)}.pop dl{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:0 0 10px}.pop dt{color:var(--muted)}.pop dd{margin:0;font-variant-numeric:tabular-nums}
+.toast{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom,0px));right:max(20px,env(safe-area-inset-right,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:6px;font-size:12px;z-index:90}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+tr.isdone td{opacity:.6}.c{text-align:center}input.big{width:18px;height:18px;accent-color:var(--accent);cursor:pointer}
+.dur{width:84px;display:inline-block}.dur.err{border-color:var(--bad)}.durcell{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.manop{display:flex;gap:6px;flex-wrap:wrap}.manop .inp{width:auto;flex:1 1 140px}
+.under{display:flex;gap:6px;align-items:center;margin-top:6px;font-size:12px}.sub2{margin-top:8px}
+.chip.bat{background:var(--ink);color:var(--bg);cursor:default}
+.modal.daily{width:min(860px,100%)}
+.dlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.dlist li{display:grid;grid-template-columns:auto 52px 130px minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:8px 10px;border-radius:6px;background:var(--bg);color:var(--fg)}
+.dlist li.done{background:var(--done);color:var(--done-ink)}.dlist li.done b{text-decoration:line-through}
+.dlist .dh{font:600 13px var(--f-mono);font-variant-numeric:tabular-nums}.dlist .dm{font-size:11px;font-weight:600}
+.dlist .dt small{display:block;font-size:11px;opacity:.8}.dlist .dd{font:12px var(--f-mono);white-space:nowrap}
+.dlist .btn{background:rgba(255,255,255,.75);color:#1b1d1f}
+@media (max-width:640px){.dlist li{grid-template-columns:auto 52px minmax(0,1fr)}.dlist .dm,.dlist .dd{display:none}}
+.durwrap{display:inline-flex;align-items:stretch}.durwrap .dur{border-radius:5px 0 0 5px;width:70px}
+.spin{display:flex;flex-direction:column;border:1px solid var(--line);border-left:0;border-radius:0 5px 5px 0;overflow:hidden}
+.spin button{flex:1;border:0;background:var(--surface);color:var(--ink);font-size:8px;line-height:1;padding:0 6px;cursor:pointer}.spin button:hover{background:var(--soft)}.spin button+button{border-top:1px solid var(--line)}
+.opname{display:block;font-size:15px;font-weight:700}.opmach{display:block;font-size:12px;color:var(--muted)}
+.dlist li{grid-template-columns:auto 52px minmax(120px,190px) minmax(0,1fr) auto auto!important}
+.dlist .dop{font-size:14px;font-weight:700}.dlist .dtit{display:block;font-size:14px;font-weight:600}
+.dlist .dmeta{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;margin-top:2px}.dlist .dwarn{font-weight:700}
+.dlist .durwrap .dur{background:rgba(255,255,255,.85);color:#1b1d1f}
+@media (max-width:640px){.dlist li{grid-template-columns:auto 52px minmax(0,1fr)!important}.dlist .dt{grid-column:2/-1}}
+.dhead{display:grid;grid-template-columns:18px 52px minmax(120px,170px) minmax(0,1fr) minmax(160px,230px) 104px 44px;gap:10px;padding:0 10px 4px;font:600 10px var(--f-mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.dlist li{grid-template-columns:18px 52px minmax(120px,170px) minmax(0,1fr) minmax(160px,230px) 104px 44px!important}
+.inp.note{resize:vertical;min-height:34px;font-size:12px;background:rgba(255,255,255,.85);color:#1b1d1f}
+.modal.daily{width:min(1180px,100%)}.modal.hist{width:min(1100px,100%)}
+.htbl tbody tr{cursor:pointer}.htbl tbody tr:hover td{background:var(--soft)}#h-q{margin-bottom:12px}
+.hdet{display:grid;grid-template-columns:max-content 1fr;gap:6px 18px;margin:14px 0}.hdet dt{color:var(--muted);font-size:12px}.hdet dd{margin:0}
+td.pre{white-space:pre-wrap}
+@media (max-width:900px){.dhead{display:none}.dlist li{grid-template-columns:18px 52px minmax(0,1fr)!important}.dlist .dt,.dlist .note{grid-column:2/-1}}
+.notecell{min-width:200px}.notecell .inp.note{background:var(--bg);color:var(--ink)}
+
+/* ===== Proposition visuelle v2 : plus de contraste, une couleur par jour, sections lisibles ===== */
+:root{--muted:#565a5c;--line:#cdd0ca;--line2:#e4e5e0;--day0:#d6e7f6;--day0i:#163b5c;--day1:#d8efdc;--day1i:#1c4a26;--today:#1f2a44;--todayi:#ffb23e;
+--gday0:#f4f8fc;--gday1:#f4faf5;--gtoday:#fff5e2;--midi:#f3e2bd;--soir:#dfe3ec;--wk0:#9fc3e6;--wk1:#a9d8b2;
+--s1:#2d6da3;--s2:#2f8a4c;--s3:#b8741a;--s4:#6c4aa0;--inpbg:#ffffff;--inpbd:#b6bab3}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--muted:#b0b4b5;--line:#3d4448;--line2:#2b3135;--day0:#1f3448;--day0i:#cfe4f7;--day1:#1f3a28;--day1i:#cdeed5;--today:#ffb23e;--todayi:#1b1d1f;
+--gday0:#182129;--gday1:#18231c;--gtoday:#2d2615;--midi:#3a3020;--soir:#262b36;--wk0:#2c4a66;--wk1:#2c5236;--s1:#7fb0d3;--s2:#7fcf98;--s3:#f0b866;--s4:#b79be6;--inpbg:#1a1e21;--inpbd:#4a5257}}
+:root[data-theme="dark"]{--muted:#b0b4b5;--line:#3d4448;--line2:#2b3135;--day0:#1f3448;--day0i:#cfe4f7;--day1:#1f3a28;--day1i:#cdeed5;--today:#ffb23e;--todayi:#1b1d1f;
+--gday0:#182129;--gday1:#18231c;--gtoday:#2d2615;--midi:#3a3020;--soir:#262b36;--wk0:#2c4a66;--wk1:#2c5236;--s1:#7fb0d3;--s2:#7fcf98;--s3:#f0b866;--s4:#b79be6;--inpbg:#1a1e21;--inpbd:#4a5257}
+/* barre d'outils */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-color:var(--inpbd)}
+.btn .ic{font-style:normal;font-size:13px;opacity:.85}.btn .cnt{background:var(--soft);border-radius:8px;padding:0 6px;font-size:11px}
+.btn-dark{background:var(--ink);color:var(--bg);border-color:var(--ink)}.btn-dark:hover{background:var(--ink);opacity:.9}
+.zoomctl{display:inline-flex;align-items:stretch;border:1px solid var(--inpbd);border-radius:6px;overflow:hidden;background:var(--surface)}
+.zoomctl .zb{border:0;background:var(--surface);color:var(--ink);font:700 16px var(--f-sans);width:34px;cursor:pointer}.zoomctl .zb:hover{background:var(--soft)}.zoomctl .zb:disabled{opacity:.3;cursor:default}
+.zoomctl .zl{display:flex;flex-direction:column;justify-content:center;min-width:104px;text-align:center;border-left:1px solid var(--line);border-right:1px solid var(--line);font-weight:700;font-size:12px;padding:2px 8px}
+.zoomctl .zl small{font:600 9px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+/* en-tête des jours */
+.corner{width:190px;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;padding:8px 12px;color:var(--ink)}.corner small{font:400 10px var(--f-sans);letter-spacing:0;text-transform:none;color:var(--muted)}
+.days{height:78px}
+.wband{position:absolute;top:0;height:18px;font:700 10px var(--f-mono);letter-spacing:.1em;text-transform:uppercase;display:flex;align-items:center;justify-content:flex-start;padding-left:10px;color:var(--ink);border-left:3px solid var(--surface)}
+.wband.w0{background:var(--wk0)}.wband.w1{background:var(--wk1)}
+.day{top:18px;bottom:0;border-left:2px solid var(--surface)}.day.wk{border-left:3px solid var(--surface)}
+.day.d0{background:var(--day0);color:var(--day0i)}.day.d1{background:var(--day1);color:var(--day1i)}
+.day.today{background:var(--today);color:var(--todayi)}
+.dlab{height:38px;display:flex;align-items:center;justify-content:center;gap:6px;padding:0 6px;font-weight:600;text-transform:none}
+.dlab .dwk{text-transform:capitalize;font-size:12px}.dlab .dnum{font-size:20px;font-weight:700;line-height:1}.dlab .dmo{font-size:12px;text-transform:capitalize}
+.dlab .todaytag{font:700 9px var(--f-mono);text-transform:uppercase;letter-spacing:.08em;border:1px solid currentColor;border-radius:8px;padding:1px 6px}
+.day.today .dlab{color:var(--todayi)}
+.hrs{height:22px;background:var(--surface);color:var(--ink);font:600 11px var(--f-mono)}
+.hrs span{display:flex;align-items:center;padding-left:4px;border-left:1px solid var(--line)}.hrs span.midi{background:var(--midi)}.hrs span.soir{background:var(--soir);color:var(--muted)}
+/* grille */
+.gday{border-left:2px solid var(--line);background-image:linear-gradient(to right,var(--line2) 1px,transparent 1px)}.gday.wk{border-left:3px solid var(--inpbd)}
+.gday.d0{background-color:var(--gday0)}.gday.d1{background-color:var(--gday1)}.gday.today{background-color:var(--gtoday)}
+.lunch{background:repeating-linear-gradient(45deg,var(--midi) 0 5px,transparent 5px 10px);opacity:.75}.lunch.soir{background:repeating-linear-gradient(45deg,var(--soir) 0 5px,transparent 5px 10px);opacity:.9}
+.nowline{width:3px;background:var(--bad);box-shadow:0 0 0 1px var(--surface)}
+/* lignes machines */
+.grow{height:54px;border-bottom:1px solid var(--line)}.grow:nth-of-type(even) .rlab{background:var(--bg)}
+.rlab{width:190px;flex-direction:row;align-items:center;justify-content:flex-start;gap:9px;font-size:14px;font-weight:700;border-right:2px solid var(--line)}
+.rlab .mchip{width:10px;height:28px;border-radius:3px;background:var(--accent);flex:none}
+.m-presse .mchip{background:#2d6da3}.m-massicot .mchip{background:#b8741a}.m-raineuse .mchip{background:#2f8a4c}.m-pelliculeuse .mchip{background:#6c4aa0}.m-encolleuse .mchip{background:#b33c5a}.m-emballeuse .mchip{background:#3c7f86}.m-agrafeuse .mchip{background:#6b6f73}
+.waits .rlab{flex-direction:column;align-items:flex-start;justify-content:center;gap:0;font-size:13px}
+/* barres */
+.bar{top:6px;height:42px;border:1.5px solid var(--fg);border-radius:5px;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.bar .bt{display:flex;flex-direction:column;line-height:1.15;padding:0 7px;min-width:0}.bar .bt b{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bar .bt small{font-size:10.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.85}
+.bar .chk{position:absolute;right:4px;top:3px;font-size:12px}
+.bar.done{border-style:solid;border-color:var(--done-ink)}
+.bar.hatch{background-image:repeating-linear-gradient(135deg,transparent 0 6px,rgba(0,0,0,.22) 6px 9px)}
+.wait{border-width:2px}
+.legend{background:var(--surface);color:var(--ink);font-size:11.5px}.legend .hint{color:var(--muted)}
+/* fiche OF */
+.modal{background:var(--bg)}.mhead{background:var(--surface);border-radius:10px 10px 0 0}.mfoot{background:var(--surface);border-radius:0 0 10px 10px}
+.sumband{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.pill{font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:12px;background:var(--soft);color:var(--ink);border:1px solid var(--line)}
+.pill.ok{background:var(--okbg);color:var(--ok);border-color:transparent}.pill.ko{background:var(--kobg);color:var(--ko);border-color:transparent}.pill.src{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.fsec{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px 14px;margin:0 0 12px}
+.fsh{margin:0 0 12px;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;gap:8px}
+.fsh::before{content:"";width:5px;height:16px;border-radius:2px;background:currentColor}
+.fsh.c1{color:var(--s1)}.fsh.c2{color:var(--s2)}.fsh.c3{color:var(--s3)}.fsh.c4{color:var(--s4)}
+.lbl{color:var(--ink);font:600 10.5px var(--f-mono);opacity:.8}
+.inp{background:var(--inpbg);border-color:var(--inpbd);color:var(--ink)}.inp:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 20%,transparent)}
+.checks.valid{padding:8px 12px;border-radius:6px;margin-top:14px;font-weight:600}.checks.valid.ok{background:var(--okbg);color:var(--ok)}.checks.valid.ko{background:var(--kobg);color:var(--ko)}
+.optbl th{background:var(--surface);color:var(--ink);border-bottom:2px solid var(--line)}
+.optbl td{border-bottom:1px solid var(--line2)}
+tr.grprow td{background:var(--soft);font:700 11px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink);padding:6px 8px}
+tr.grprow.g-Intérieur td{box-shadow:inset 4px 0 0 var(--s1)}tr.grprow.g-Couverture td{box-shadow:inset 4px 0 0 var(--s2)}tr.grprow.g-Assemblage td{box-shadow:inset 4px 0 0 var(--s3)}
+tr.isdone td{opacity:1;background:var(--okbg)}tr.isdone .opname::after{content:" ✓";color:var(--ok)}
+.opname{font-size:15px}.opmach{color:var(--muted)}
+.notecell .inp.note{background:var(--inpbg)}
+
+/* fiche OF en onglets, tient sur un écran */
+.modal.ofm{height:min(900px,94vh);max-height:94vh;width:min(1180px,100%);margin-top:2vh}
+.ofm .mhead{padding-bottom:0}.mh1{min-width:0;flex:1}
+.tabs{display:flex;gap:4px;margin-top:10px}.tabs button{border:1px solid var(--line);border-bottom:0;background:var(--bg);color:var(--muted);font:700 13px var(--f-sans);padding:8px 16px;border-radius:7px 7px 0 0;cursor:pointer;display:inline-flex;gap:8px;align-items:center}
+.tabs button.on{background:var(--bg);color:var(--ink);box-shadow:inset 0 3px 0 var(--accent);background:var(--surface)}.tabs .cnt{background:var(--soft);border-radius:8px;padding:0 6px;font-size:11px}
+.ofm .mbody{flex:1;padding:12px 18px}
+.ofm .fsec{padding:10px 14px 12px;margin-bottom:10px}.ofm .fsh{margin-bottom:8px}
+.fshrow{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px}.fshrow .fsh{margin:0}.fshrow .seg{margin:0}
+.g4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px 12px}.span2{grid-column:span 2}
+.ofm .fld .inp{padding:6px 9px}.ofm .lbl{margin-bottom:3px}
+.sub2.inline{display:flex;align-items:center;gap:6px;margin-top:6px}.sub2.inline .inp{width:64px}
+.checks.valid{display:flex;flex-direction:column;gap:2px;margin-top:10px}.checks.valid span{font-weight:400;font-size:12px}
+.optbl.compact td{padding:5px 8px}.optbl.compact .inp.note{min-height:32px}
+tr.extra td:first-child{box-shadow:inset 3px 0 0 var(--s4)}
+.opact{white-space:nowrap}.addop{margin-top:10px}.addop .inp{width:auto;max-width:240px}.modrow{margin:0 0 8px}
+.mods .fsec{margin-bottom:12px}.mname{font-weight:700;font-size:14px;max-width:340px}.row0{display:inline-flex;gap:6px}
+@media (max-width:900px){.g4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* tâches du jour : notes lisibles */
+.dlist li{align-items:start!important}.dlist li>*{align-self:center}.dlist li .note{align-self:stretch}
+.inp.note{overflow:hidden;resize:none;white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.35;min-height:34px}
+.dhead span:first-child{text-align:center}
+/* historique */
+.hcards{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.hcards li{display:grid;grid-template-columns:110px minmax(0,1.6fr) minmax(0,1fr) minmax(0,1.4fr);gap:12px;align-items:center;padding:10px 14px;border-radius:7px;background:var(--bg);color:var(--fg);border-left:6px solid var(--fg);cursor:pointer}
+.hcards li:hover{filter:brightness(.97)}.hc1{display:flex;flex-direction:column;gap:4px;align-items:flex-start}.hdate{font:700 12px var(--f-mono)}
+.htit{display:block;font-size:15px}.hcli{font-size:12px;opacity:.85}.hc3{display:flex;gap:12px;font-size:12px}.hc4{display:flex;flex-direction:column;gap:4px;font-size:12px;align-items:flex-start}
+.hgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:5px 16px;margin:0}.kv dt{color:var(--muted);font-size:12px}.kv dd{margin:0;font-weight:600}
+td.hasnote{background:var(--kobg);color:var(--ink);font-weight:500}
+@media (max-width:800px){.hcards li{grid-template-columns:1fr}.hgrid{grid-template-columns:1fr}}
+.ofm .optbl.compact td{padding:3px 8px}.ofm .optbl.compact .opname{display:inline;font-size:14px}.ofm .optbl.compact .opmach{display:inline;margin-left:8px;font-size:11.5px}
+.ofm .optbl.compact .inp.note{min-height:30px;padding:5px 8px}.ofm .optbl.compact .dur{padding:4px 6px}.ofm .notecell{width:38%}.ofm tr.grprow td{padding:4px 8px}
+.ofm .manop .inp{padding:4px 8px}
+.dhead,.dlist li{grid-template-columns:40px 52px minmax(120px,170px) minmax(0,1fr) minmax(180px,260px) 104px 44px!important}.dlist li>input.big{justify-self:center}
+.ofm .optbl.compact .inp.note{min-height:28px;line-height:1.25;padding:4px 8px;font-size:12.5px}.ofm .durwrap{height:30px}.ofm .dur{height:30px}.ofm .spin button{padding:0 5px}
+.ofm .addop{margin-top:6px}.ofm .addop .note{margin:0;flex:1 1 300px;font-size:11.5px}
+textarea.inp.note{display:block;margin:0}
+.tabs{align-items:flex-end}.typeseg{margin:0 0 4px auto;align-items:center}.typeseg .lbl{padding:0 8px;margin:0}
+.daily .mhead .row0{display:flex;gap:10px;align-items:center}.pdfmsg{margin:8px 20px 0}
+.tabs .typeseg{border:1px solid var(--inpbd);border-radius:6px;overflow:hidden;background:var(--surface)}
+.tabs .typeseg button{border:0;border-left:1px solid var(--line);border-radius:0;box-shadow:none;background:var(--surface);color:var(--ink);font:600 12px var(--f-sans);padding:6px 12px}
+.tabs .typeseg button.on{background:var(--accent);color:var(--accent-ink);box-shadow:none}
+.picto{flex:none;display:inline-block;vertical-align:-3px}
+.mpic{width:30px;height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--mc) 14%,var(--surface));border:1.5px solid var(--mc);flex:none}
+.bar .bpic{margin-left:5px}.bar .bt{padding-left:5px}
+.dlist .dop{display:flex;align-items:center;gap:8px}.opname .picto{margin-right:7px}
+.tabs .typewrap{margin-left:auto;display:flex;align-items:center;gap:10px;padding-bottom:5px}
+.typelbl{font:600 10.5px var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tabs .typeseg{margin:0}
+.manop{align-items:center}.mpicl{margin-right:2px}.mnum{display:inline-flex;align-items:center;gap:8px}
+.sync{display:block;font-size:11px;font-weight:600;margin-top:2px}.sync.ok{color:var(--ok)}.sync.busy{color:var(--muted)}.sync.err{color:var(--bad)}
+.gate{height:100%;display:flex;align-items:center;justify-content:center;background:var(--today);padding:16px}
+.gbox{background:var(--surface);border-radius:12px;padding:32px 36px;width:min(380px,100%);display:flex;flex-direction:column;gap:10px;box-shadow:0 24px 80px rgba(0,0,0,.4)}
+.gbox h1{margin:0 0 10px}
+</style>
+</head><body>
+<script>window.SB_CONF={url:'https://elgzabndydvidkwitgbp.supabase.co',key:'sb_publishable_kTq6l0FOYWmTx5AZywoDHg_BZh8LSep',hash:'613cc1600f1da8046e65db6ac7d64bc711470e8b3b0f0a74e5a8298f2bc00053'};</script>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script>try{pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}catch(e){}</script>
+<script>
+/* ===== MOTEUR LVSL : calendrier, durées, ordonnancement au plus tôt ===== */
+// Axe : chaque jour ouvré de 9h à 20h. Opérateur : 9h-12h et 13h-17h.
+// Midi, soir et nuit : opérateur absent ; la presse lancée continue seule (temps masqué), y compris la nuit.
+const WD=660, L0=180, L1=240, E0=480;
+const MACHINES=[
+  {id:'presse',nom:"Presse d'impression"},{id:'massicot',nom:'Massicot'},{id:'raineuse',nom:'Raineuse'},
+  {id:'pelliculeuse',nom:'Pelliculeuse'},{id:'encolleuse',nom:'Encolleuse'},{id:'emballeuse',nom:'Emballeuse'},{id:'agrafeuse',nom:'Agrafeuse'}];
+const DEFAULT_PARAMS={
+  presseInt:{lancement:5,ppm:35}, presseCouv:{lancement:3,ppm:25},
+  masInt:{a:3,b:0.03}, masCouv:{a:2,b:0.02}, masFin:{a:4.5,b:0.06},
+  rai:{a:4.3,b:0.126}, pel:{a:12.5,b:0.05}, col:{a:8,b:0.28}, emb:{a:8.5,b:0.16},
+  sechageH:12, transportJO:3, delaiJ:14, attenteBAT:10,
+  feuille:{l:320,h:450}, fondPerdu:3
+};
+function mondayOf(d){const x=new Date(d.getFullYear(),d.getMonth(),d.getDate());x.setDate(x.getDate()-(x.getDay()+6)%7);return x;}
+function makeCal(origin){
+  const o=mondayOf(origin);
+  function dayDate(di){const wk=Math.floor(di/5),dw=di-wk*5;const d=new Date(o);d.setDate(o.getDate()+wk*7+dw);return d;}
+  function w2date(w){const di=Math.floor(w/WD);const d=dayDate(di);d.setHours(0,540+(w-di*WD),0,0);return d;}
+  function w2dateEnd(w){if(w>0&&w%WD===0){const d=dayDate(w/WD-1);d.setHours(0,540+WD,0,0);return d;}return w2date(w);}
+  function date2w(date){
+    const day=new Date(date.getFullYear(),date.getMonth(),date.getDate());
+    const cd=Math.round((day-o)/864e5); if(cd<0) return 0;
+    const wk=Math.floor(cd/7),dw=cd-wk*7; if(dw>=5) return (wk+1)*5*WD;
+    const di=wk*5+dw, t=date.getHours()*60+date.getMinutes()+date.getSeconds()/60;
+    if(t<540) return di*WD; if(t<540+WD) return di*WD+(t-540); return (di+1)*WD;
+  }
+  return {origin:o,dayDate,w2date,w2dateEnd,date2w};
+}
+function shiftWorkDays(date,n){const d=new Date(date);const st=n<0?-1:1;let k=0;while(k<Math.abs(n)){d.setDate(d.getDate()+st);const w=d.getDay();if(w!==0&&w!==6)k++;}return d;}
+// temps opérateur : saute midi, soir et nuit
+function normOp(t){const d=Math.floor(t/WD)*WD,p=t-d;if(p>=L0&&p<L1)return d+L1;if(p>=E0)return d+WD;return t;}
+function addOp(t,dur){t=normOp(t);let g=0;while(dur>0&&g++<2000){const d=Math.floor(t/WD)*WD,p=t-d,lim=p<L0?L0:E0,av=lim-p;if(dur<=av)return t+dur;dur-=av;t=p<L0?d+L1:d+WD;}return t;}
+// temps machine presse : tourne de 9h à 20h, s'arrête la nuit
+function addMach(t,dur){let g=0;while(dur>0&&g++<2000){const d=Math.floor(t/WD)*WD,p=t-d,av=WD-p;if(dur<=av)return t+dur;dur-=av;t=d+WD;}return t;}
+function poses(w,h,P){const f=P.fondPerdu*2,W=w+f,H=h+f,L=P.feuille.l,Hh=P.feuille.h;if(!(W>0&&H>0))return 1;
+  return Math.max(1,Math.floor(L/W)*Math.floor(Hh/H),Math.floor(L/H)*Math.floor(Hh/W));}
+function grammage(p){const m=/(\d{2,3})\s*g/.exec(p||'');return m?+m[1]:80;}
+function epaisseurDos(of){return (of.pages||0)/2*grammage(of.papierInt)*0.00125;}
+const r1=x=>Math.max(1,Math.round(x));
+const lin=(c,q)=>c.a+c.b*q;
+/* Opérations d'un OF. surcharges[code] = minutes opérateur forcées (pour la presse : temps de lancement). */
+function buildOps(of,P){
+  const q=+of.quantite||0, pg=+of.pages||0, ov=of.surcharges||{};
+  const dur=(code,v)=>ov[code]!=null&&ov[code]!==''?r1(+ov[code]):r1(v);
+  const ops=[];
+  if(of.type==='autre'){
+    let prev=null;
+    (of.opsManuelles||[]).forEach((m,i)=>{const code=m.id||('M'+i);const o={code,grp:'Opérations',label:m.label||'Opération',machine:m.machine,op:r1(+m.op||1),preds:prev?[prev]:[],waitH:m.machine==='pelliculeuse'?P.sechageH:0};
+      if(m.machine==='presse'){const pz=poses(+of.largeur,+of.hauteur,P);const faces=Math.ceil(Math.max(1,pg)*Math.max(1,q)/pz);o.mach=Math.max(o.op,r1(faces/P.presseInt.ppm));o.info=pz+' poses · '+faces+' faces SRA3 à '+P.presseInt.ppm+' ppm';}
+      ops.push(o);prev=code;});
+  } else {
+    const pI=poses(+of.largeur,+of.hauteur,P), facesInt=Math.ceil(pg/pI)*q;
+    const dos=epaisseurDos(of), pC=poses(2*(+of.largeur)+dos,+of.hauteur,P), facesCouv=Math.ceil(q/pC);
+    const lI=dur('IMP_INT',P.presseInt.lancement), lC=dur('IMP_COUV',P.presseCouv.lancement);
+    ops.push({code:'IMP_INT',grp:'Intérieur',label:'Impression intérieur',machine:'presse',op:lI,mach:Math.max(lI,r1(facesInt/P.presseInt.ppm)),preds:[],info:pI+' poses · '+facesInt+' faces SRA3 à '+P.presseInt.ppm+' ppm'});
+    ops.push({code:'MAS_INT',grp:'Intérieur',label:'Massicot intérieur',machine:'massicot',op:dur('MAS_INT',lin(P.masInt,q)),preds:['IMP_INT']});
+    ops.push({code:'IMP_COUV',grp:'Couverture',label:'Impression couverture',machine:'presse',op:lC,mach:Math.max(lC,r1(facesCouv/P.presseCouv.ppm)),preds:[],info:pC+' pose(s) · dos ≈ '+dos.toFixed(1)+' mm · '+facesCouv+' faces SRA3 à '+P.presseCouv.ppm+' ppm'});
+    let pr='IMP_COUV';
+    if(of.pelliculage&&of.pelliculage!=='non'){ops.push({code:'PEL',grp:'Couverture',label:'Pelliculage '+of.pelliculage,machine:'pelliculeuse',op:dur('PEL',lin(P.pel,q)),preds:['IMP_COUV'],waitH:P.sechageH});pr='PEL';}
+    ops.push({code:'RAI',grp:'Couverture',label:'Rainage',machine:'raineuse',op:dur('RAI',lin(P.rai,q)),preds:[pr]});
+    ops.push({code:'MAS_COUV',grp:'Couverture',label:'Massicot couverture',machine:'massicot',op:dur('MAS_COUV',lin(P.masCouv,q)),preds:['RAI']});
+    ops.push({code:'COL',grp:'Assemblage',label:'Collage',machine:'encolleuse',op:dur('COL',lin(P.col,q)),preds:['MAS_INT','MAS_COUV'],waitH:P.sechageH});
+    ops.push({code:'MAS_FIN',grp:'Assemblage',label:'Massicot final',machine:'massicot',op:dur('MAS_FIN',lin(P.masFin,q)),preds:['COL']});
+    ops.push({code:'EMB',grp:'Assemblage',label:'Emballage',machine:'emballeuse',op:dur('EMB',lin(P.emb,q)),preds:['MAS_FIN']});
+    /* opérations ajoutées : insérées dans l'enchaînement juste après l'opération « after » */
+    (of.extraOps||[]).forEach(x=>{const ai=ops.findIndex(o=>o.code===x.after);if(ai<0)return;const A=ops[ai];
+      ops.forEach(o=>{o.preds=o.preds.map(p=>p===A.code?x.id:p);});
+      ops.splice(ai+1,0,{code:x.id,grp:A.grp,label:x.label||'Opération',machine:x.machine,op:r1(+x.op||1),preds:[A.code],waitH:x.machine==='pelliculeuse'?P.sechageH:0,extra:true});});
+  }
+  ops.forEach(o=>{if(o.mach==null)o.mach=o.op;});
+  const st=of.etat||{};
+  ops.forEach(o=>{const e=st[o.code]||{};o.done=!!e.done;o.fixD=e.fixD;o.nbD=e.nbD;});
+  return ops;
+}
+function dateLivraison(of,P){if(of.livraison)return new Date(of.livraison+'T12:00:00');const d=new Date((of.dateCommande||new Date().toISOString().slice(0,10))+'T12:00:00');d.setDate(d.getDate()+(+of.delai||P.delaiJ));return d;}
+function dateExpeLimite(of,P){const d=(of.enlevement||of.batDe)?new Date(dateLivraison(of,P)):shiftWorkDays(dateLivraison(of,P),-P.transportJO);d.setHours(17,0,0,0);return d;}
+function schedule(ofs,P,cal,nowDate,archives){
+  const nowW=cal.date2w(nowDate);
+  const machEnd=(t,m)=>cal.date2w(new Date(cal.w2date(t).getTime()+m*6e4)); // presse : temps réel, nuit comprise
+  const span=(o,t)=>{t=normOp(t);const oe=addOp(t,o.op);return[t,oe,o.machine==='presse'?Math.max(oe,machEnd(t,o.mach)):oe];};
+  const opBusy=[],mBusy={};MACHINES.forEach(m=>mBusy[m.id]=[]);
+  const res={tasks:[],waits:[],ofs:{}};
+  const all=ofs.map(of=>({of,ops:buildOps(of,P)}));
+  // tâches faites : figées à leur date
+  all.forEach(({ops})=>ops.forEach(o=>{if(o.nbD)o.notBefore=cal.date2w(new Date(o.nbD));
+    if(o.done&&o.fixD){const[a,b,c]=span(o,cal.date2w(new Date(o.fixD)));o.fixS=a;o.fixE=c;opBusy.push([a,b]);mBusy[o.machine].push([a,c]);}}));
+  const conflict=(list,s,e)=>{let m=-1;for(const[a,b]of list)if(a<e&&s<b&&b>m)m=b;return m;};
+  const plusCal=(w,h,j)=>{const d=cal.w2dateEnd(w);d.setTime(d.getTime()+(h||0)*36e5);if(j)d.setDate(d.getDate()+j);return cal.date2w(d);};
+  const placed={};
+  function place({of,ops}){
+    if(placed[of.id])return; placed[of.id]=true;
+    // fichiers non validés : jamais démarré avant demain, et placé après les OF validés (ne bloque personne)
+    let start=of.fichiersOk?nowW:(Math.floor(nowW/WD)+1)*WD;
+    /* BAT : la production attend la fin du BAT + 10 jours ouvrés, tant que le BAT n'est pas terminé
+       ou que la production n'est pas validée (retour client). BAT terminé + production validée : libre. */
+    const bat=ofs.find(x=>x.batDe===of.id), batArch=(archives||[]).find(x=>x.batDe===of.id);
+    const att=+of.attenteBAT||P.attenteBAT;
+    if(bat){const b=all.find(x=>x.of.id===bat.id);place(b);const bf=res.ofs[bat.id].fin;const rdy=bf+att*WD;
+      start=Math.max(start,rdy);res.waits.push({ofId:of.id,s:bf,e:rdy,label:'Retour BAT attendu ('+att+' j ouvrés)'});}
+    else if(batArch&&!of.fichiersOk){const ds=Object.values(batArch.etat||{}).map(e=>e.fixD||e.doneAt).filter(Boolean).map(d=>new Date(d));
+      if(ds.length){const bf=cal.date2w(new Date(Math.max(...ds)));const rdy=bf+att*WD;start=Math.max(start,rdy);if(rdy>nowW)res.waits.push({ofId:of.id,s:Math.max(bf,0),e:rdy,label:'Retour BAT attendu ('+att+' j ouvrés)'});}}
+    const by={};ops.forEach(o=>by[o.code]=o);const done=new Set();let g=0;
+    while(done.size<ops.length&&g++<100){for(const o of ops){if(done.has(o.code)||!o.preds.every(p=>done.has(p)))continue;
+      let ready=start;o.preds.forEach(p=>ready=Math.max(ready,by[p].readyAfter));
+      if(o.done&&o.fixS!=null){o.s=o.fixS;o.e=o.fixE;}
+      else{if(o.notBefore!=null)ready=Math.max(ready,o.notBefore);
+        let t=ready,k=0,sp;while(k++<5000){sp=span(o,t);const c=Math.max(conflict(opBusy,sp[0],sp[1]),conflict(mBusy[o.machine],sp[0],sp[2]));if(c<0)break;t=c;}
+        o.s=sp[0];o.e=sp[2];opBusy.push([sp[0],sp[1]]);mBusy[o.machine].push([sp[0],sp[2]]);}
+      o.readyAfter=o.waitH?plusCal(o.e,o.waitH):o.e;
+      if(o.readyAfter>o.e)res.waits.push({ofId:of.id,s:o.e,e:o.readyAfter,label:o.code==='COL'?'Séchage colle 12 h':'Séchage pelliculage 12 h'});
+      done.add(o.code);res.tasks.push({ofId:of.id,...o});}}
+    const fin=ops.length?Math.max(...ops.map(o=>o.e)):nowW;const finDate=cal.w2dateEnd(fin),lim=dateExpeLimite(of,P);
+    res.ofs[of.id]={fin,finDate,limite:lim,livraison:dateLivraison(of,P),retard:finDate>lim,nbOps:ops.length,nbFaits:ops.filter(o=>o.done).length};
+  }
+  all.filter(x=>x.of.fichiersOk).forEach(place);
+  all.forEach(place);
+  return res;
+}
+/* ===== LECTURE DES FACTURES JIML ET DEVIS LVSL (sans Claude) ===== */
+function normPap(s){return (s||'').toLowerCase().replace(/sorposet/g,'soporset').replace(/colorcopy/g,'color copy').replace(/^s?ra3?\s+|^a3\s+/,'').replace(/\s+/g,'');}
+function matchPapier(raw,papiers){
+  if(!raw)return '';
+  if(/offset\s*80\s*g/i.test(raw))return papiers.find(p=>/soporset 80/i.test(p))||'SRA3 Soporset 80 g Blanc';
+  const g=(/(\d{2,3})\s*g/.exec(raw)||[])[1]; const brand=normPap(raw).replace(/\d.*$/,'');
+  const cands=papiers.filter(p=>(!g||new RegExp('\\b'+g+'\\s*g').test(p))&&normPap(p).replace(/^sra3|^a3/,'').startsWith(brand.slice(0,6)));
+  if(cands.length) return cands.sort((a,b)=>(/^SRA3/.test(b)?1:0)-(/^SRA3/.test(a)?1:0))[0];
+  return raw.trim();
+}
+const fr2iso=s=>{const m=/(\d{2})\/(\d{2})\/(\d{4})/.exec(s||'');return m?m[3]+'-'+m[2]+'-'+m[1]:'';};
+const num=s=>parseFloat(String(s).replace(',','.'));
+function parseDocument(text,papiers,todayIso){
+  const out=[];
+  if(/Livre personnalis/i.test(text)){ // ---- Facture J'imprime mon livre
+    const fa=(/#(FA\d+)/.exec(text)||[])[1]||'';
+    const m=/#FA\d+\s+(\d{2}\/\d{2}\/\d{4})\s+(\S+)\s+(\d{2}\/\d{2}\/\d{4})/.exec(text)||[];
+    const client=((/Adresse de facturation\s*\n\s*([^\n]+)/.exec(text)||[])[1]||'').trim();
+    const blocs=text.split(/Livre personnalis[ée]/i).slice(1);
+    blocs.forEach(b=>{
+      const f=/(\d+(?:[.,]\d+)?)\s*x\s*(\d+(?:[.,]\d+)?)\s*cm/i.exec(b)||[];
+      const pap=(/Papier\s*:\s*([\s\S]+?)\s+-\s+Couleur/i.exec(b)||[])[1]||'';
+      const coul=(/Couleur\s*:\s*\n?\s*([A-Za-zéè\/ &]+?)\s*(?:-|\))/i.exec(b)||[])[1]||'';
+      const fin=(/Finition\s*:\s*([^)]+)\)/i.exec(b)||[])[1]||'';
+      out.push({source:'JIML',numero:fa+(m[2]?' / '+m[2]:''),client,
+        titre:((/Nom\s*:\s*([^\n]+)/.exec(b)||[])[1]||'').trim(),
+        largeur:f[1]?Math.round(num(f[1])*10):'',hauteur:f[2]?Math.round(num(f[2])*10):'',
+        papierInt:matchPapier(pap.replace(/\\n|\n/g,' '),papiers),papierCouv:papiers.find(p=>/^Invercote 300/.test(p))||'Invercote 300 g',
+        couleur:/noir|n\s*\/\s*b/i.test(coul)?'NB':'Couleur',
+        pelliculage:/brillant/i.test(fin)?'brillant':/mat/i.test(fin)?'mat':'non',
+        quantite:+((/Nombre d'exemplaires\s*:\s*(\d+)/i.exec(b)||[])[1]||1),
+        pages:+((/Nombre de pages?\s*:\s*(\d+)/i.exec(b)||[])[1]||0),
+        exemplaire:/impression\s*:\s*Oui/i.test(b),
+        dateCommande:fr2iso(m[3]||m[1])||todayIso,type:'livre'});
+    });
+  } else if(/LE VENT SE LEVE/i.test(text)&&/Devis|Facture/i.test(text)){ // ---- Devis / facture LVSL
+    const no=(/N°\s*:\s*((?:DE|FA)\d+)/.exec(text)||[])[1]||'';
+    const client=((/(?:valable jusqu'au|Date d'échéance)[^\n]*\n\s*([^\n]+)/.exec(text)||[])[1]||'').trim();
+    const re=/([^\n]+)\n\s*(\d+)\s*pages\s*\n\s*Format fini\s*:\s*([\d,]+)\s*[×x]\s*([\d,]+)\s*mm\s*\n\s*Intérieur\s*:\s*([^\n]+)\n\s*Couverture\s*:\s*([\s\S]+?)\n\s*(Dos carré collé|[^\n]*agraf[^\n]*)?\s*\n?\s*([\d,]+)\s+u\b/g;
+    let x; while((x=re.exec(text))){
+      const inter=x[5], couv=x[6].replace(/\n/g,' ');
+      const papI=inter.split(',').slice(-1)[0].trim(), papC=(couv.split(',').find(s=>/\d+\s*g/.test(s))||'').trim();
+      out.push({source:'LVSL',numero:no,client,titre:x[1].trim(),
+        largeur:num(x[3]),hauteur:num(x[4]),pages:+x[2],quantite:Math.round(num(x[8])),
+        papierInt:matchPapier(papI,papiers),papierCouv:matchPapier(papC,papiers),
+        couleur:/noir/i.test(inter)?'NB':'Couleur',
+        pelliculage:/pelliculage\s+brillant/i.test(couv)?'brillant':/pelliculage\s+mat/i.test(couv)?'mat':'non',
+        exemplaire:false,dateCommande:todayIso,type:/agraf/i.test(x[7]||'')?'autre':'livre'});
+    }
+  }
+  return out;
+}
+</script>
+<script type="text/babel" data-presets="react">
+const {useState,useEffect,useMemo,useRef}=React;
+const PAPIERS_CSV=["Invercote 300 g","SRA3 Munken Cream 90 g Bouffant","SRA3 Soporset 80 g Blanc","SRA3 Color Copy Bristol 250 g","SRA3 Soporset 90 g Blanc","SRA3 Color Copy Blanc 120 g","SRA3 Rives tradition pale cream 250 g","SRA3 Rives tradition blanc naturel 250 g","A3 Navigator 90 g Blanc","SRA3 Novatech Digital Gloss 300 g","SRA3 Color Copy Blanc 100 g","SRA3 Rives tradition ivoire naturel 250 g","Munken Pure 240 g","SRA3 Color Copy Bristol 300 g","SRA3 Color Copy 90 g","SRA3 Color Copy Bristol 200 g","Soporset 120 g","SRA3 Color Copy Bristol 160 g","Zenith 270 g","A3 Color Copy Blanc 100 g","A3 Discovery 75 g Blanc","SRA3 Fluo 90 g","SRA3 Cyclus Offset Preprint 80 g","A3 Color Copy Blanc 120 g","Soporset 100 g","SRA3 Munken White 90 g Bouffant","SRA3 Condat Silk 300 g","SRA3 IQ Color Pastel 80 g","SRA3 Prismapack 325 g","SRA3 Novatech Digital Gloss 150 g","SRA3 IQ Color Vives 80 g","Novatech Matt 115 g","Zenith 350 g","SRA3 Arctic Ivory 200 g","SRA3 Xerox Colour Laser, mat, blanc, adhésif","SRA3 Brillant Nevia 130 g","SRA3 Color Copy Brillant 170 g","Novatech Digital Gloss 130 g","Novatech Satin 300 g","Olin Blanc 100 g"];
+const OF_COLORS=[['#cfe0f2','#14324f'],['#f6dcc3','#5a3210'],['#d6ecd2','#1f4a1a'],['#ead7f0','#46205a'],['#f7e3a8','#4d3b05'],['#cde9e8','#0f4645'],['#f3cfd4','#5c1822'],['#e2e0d6','#33312a']];
+const STORE='lvsl-planning-proto-v1';
+const todayIso=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+const LABW=190;
+const MCOL={presse:'#2d6da3',massicot:'#b8741a',raineuse:'#2f8a4c',pelliculeuse:'#6c4aa0',encolleuse:'#b33c5a',emballeuse:'#3c7f86',agrafeuse:'#6b6f73'};
+const PICTO={
+  presse:'<path d="M7 9V4h10v5"/><rect x="3" y="9" width="18" height="7" rx="2"/><path d="M7 14h10v6H7z" fill="currentColor"/>',
+  massicot:'<rect x="5" y="2.5" width="14" height="7.5" rx="1" fill="currentColor"/><path d="M2 12h20"/><rect x="5" y="14" width="14" height="7.5" rx="1"/>',
+  raineuse:'<path d="M12 3v8" stroke-width="2.8"/><path d="M3 14h7l2 2 2-2h7"/>',
+  pelliculeuse:'<path d="M12 3l2 7 7 2-7 2-2 7-2-7-7-2 7-2z" fill="currentColor"/>',
+  encolleuse:'<path d="M12 3c3.5 5 6 8 6 11a6 6 0 0 1-12 0c0-3 2.5-6 6-11z" fill="currentColor"/>',
+  emballeuse:'<path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/>',
+  agrafeuse:'<path d="M5 17V8h14v9" stroke-width="2.6"/>'};
+function Picto({m,size=16,className}){return <svg className={'picto '+(className||'')} viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{color:MCOL[m]||'currentColor'}} aria-hidden="true" dangerouslySetInnerHTML={{__html:PICTO[m]||''}}/>;}
+const isoWeek=d=>{const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const n=t.getUTCDay()||7;t.setUTCDate(t.getUTCDate()+4-n);const y=new Date(Date.UTC(t.getUTCFullYear(),0,1));return Math.ceil(((t-y)/864e5+1)/7);};
+const uid=()=>Math.random().toString(36).slice(2,9);
+const fmtD=d=>d?d.toLocaleDateString('fr-FR',{weekday:'short',day:'2-digit',month:'2-digit'}):'';
+const fmtDH=d=>d?d.toLocaleString('fr-FR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+const hhmm=m=>{m=Math.round(+m||0);return Math.floor(m/60)+':'+String(m%60).padStart(2,'0');};
+const parseHHMM=v=>{v=String(v).trim();if(!v)return null;let m=/^(\d+)\s*[:hH]\s*(\d{0,2})$/.exec(v);if(m)return (+m[1])*60+(+(m[2]||0));m=/^\d+$/.exec(v);return m?+v:NaN;};
+const fmtMin=m=>m<60?Math.round(m)+' min':Math.floor(m/60)+' h '+String(Math.round(m%60)).padStart(2,'0');
+const MAN_PRESETS={
+  brochure:[{label:'Impression',machine:'presse',op:5},{label:'Massicot',machine:'massicot',op:10},{label:'Pliage / agrafage',machine:'agrafeuse',op:20},{label:'Massicot final',machine:'massicot',op:8},{label:'Emballage',machine:'emballeuse',op:10}],
+  flyers:[{label:'Impression',machine:'presse',op:5},{label:'Coupe massicot',machine:'massicot',op:10},{label:'Emballage',machine:'emballeuse',op:8}]
+};
+function load(){try{const s=localStorage.getItem(STORE);if(s)return JSON.parse(s);}catch(e){}return null;}
+function save(st){try{localStorage.setItem(STORE,JSON.stringify(st));}catch(e){}}
+function exemple(){
+  const t=todayIso();
+  const base=[
+    {source:'JIML',numero:'FA000109 / TNPISYRBI',client:'CASSANDRE BERNARD',titre:'Mon âme nous appartient',largeur:110,hauteur:180,papierInt:'SRA3 Soporset 80 g Blanc',papierCouv:'Invercote 300 g',couleur:'Couleur',pelliculage:'brillant',quantite:4,pages:324,exemplaire:false,dateCommande:'2026-10-17',fichiersOk:true},
+    {source:'LVSL',numero:'DE000105',client:'Madame Marie-José Gargouil',titre:'La Chaussette Rouge',largeur:215,hauteur:148.5,pages:40,quantite:10,papierInt:'SRA3 Color Copy Blanc 120 g',papierCouv:'Invercote 300 g',couleur:'Couleur',pelliculage:'non',exemplaire:false,dateCommande:t,fichiersOk:true},
+    {source:'LVSL',numero:'DE000105',client:'Madame Marie-José Gargouil',titre:'Le Tribunal des Anges',largeur:145,hauteur:204,pages:224,quantite:5,papierInt:'SRA3 Soporset 80 g Blanc',papierCouv:'Invercote 300 g',couleur:'NB',pelliculage:'non',exemplaire:false,dateCommande:t,fichiersOk:true},
+    {source:'LVSL',numero:'DE000105',client:'Madame Marie-José Gargouil',titre:'Les Enfants de Compagnie',largeur:145,hauteur:204,pages:360,quantite:5,papierInt:'SRA3 Soporset 80 g Blanc',papierCouv:'Invercote 300 g',couleur:'NB',pelliculage:'mat',exemplaire:false,dateCommande:t,fichiersOk:false},
+    {source:'LVSL',numero:'DE000105',client:'Madame Marie-José Gargouil',titre:'La Butte aux Cailles',largeur:140,hauteur:204,pages:264,quantite:5,papierInt:'SRA3 Soporset 80 g Blanc',papierCouv:'Invercote 300 g',couleur:'NB',pelliculage:'non',exemplaire:true,dateCommande:t,fichiersOk:false},
+    {source:'LVSL',numero:'Bulletin 11/2026',client:'Mairie de Rioux-Martin',titre:'Bulletin municipal',type:'autre',quantite:175,pages:20,largeur:210,hauteur:297,dateCommande:t,fichiersOk:true,opsManuelles:MAN_PRESETS.brochure.map(x=>({...x}))}
+  ];
+  return base.map((o,i)=>({id:uid(),type:'livre',delai:14,etat:{},couleurIdx:i%OF_COLORS.length,...o}));
+}
+/* OF avec exemplaire : un OF BAT (1 exemplaire) est créé juste avant l'OF principal */
+const SPEC=['source','numero','client','type','largeur','hauteur','pages','papierInt','papierCouv','couleur','pelliculage','dateCommande','opsManuelles','couleurIdx'];
+function ensureBats(list,P){
+  let l=list.filter(o=>!o.batDe||o.archive||list.some(p=>p.id===o.batDe&&p.exemplaire));
+  const out=[];
+  l.forEach(o=>{
+    if(o.batDe){if(o.archive||!l.some(p=>p.id===o.batDe&&!p.archive))out.push(o);return;}
+    if(o.exemplaire){
+      const old=l.find(x=>x.batDe===o.id);
+      if(old){out.push(old);}
+      else{const liv=shiftWorkDays(dateExpeLimite(o,P),-(+o.attenteBAT||P.attenteBAT)); /* BAT emballé au plus tard : expé limite de la série moins le retour BAT */
+        const b={id:uid(),etat:{},surcharges:{},fichiersOk:false,batDe:o.id,exemplaire:false,quantite:1,titre:o.titre+' · exemplaire BAT',livraison:liv.toISOString().slice(0,10),enlevement:true};
+        SPEC.forEach(k=>b[k]=o[k]);b.papierInt2=o.papierInt2;b.pagesInt2=o.pagesInt2;out.push(b);}
+    }
+    out.push(o);
+  });
+  return out;
+}
+function useNow(){const[n,setN]=useState(new Date());useEffect(()=>{const t=setInterval(()=>setN(new Date()),60000);return()=>clearInterval(t);},[]);return n;}
+
+function App(){
+  const init=useMemo(()=>window.__BOOT||load(),[]);
+  const[ofs,setOfs]=useState(()=>ensureBats((init?.ofs||exemple()).map(o=>({...o,source:o.source==='JIML'?'JIML':'LVSL'})),{...DEFAULT_PARAMS,...(init?.params||{})}));
+  const[focus,setFocus]=useState(null);const[scrollTick,setScrollTick]=useState(0);
+  const[papiers,setPapiers]=useState(init?.papiers||PAPIERS_CSV);
+  const[clients,setClients]=useState(init?.clients||[]);
+  const[modeles,setModeles]=useState(init?.modeles||[{id:'mbro',nom:'Brochure agrafée',ops:MAN_PRESETS.brochure},{id:'mfly',nom:'Flyers / affiches',ops:MAN_PRESETS.flyers}]);
+  const[params,setParams]=useState({...DEFAULT_PARAMS,...(init?.params||{})});
+  const ZOOMS=[{d:10,l:'2 semaines'},{d:5,l:'1 semaine'},{d:3,l:'3 jours'},{d:2,l:'2 jours'},{d:1,l:'1 journée'},{d:0.5,l:'½ journée'}];
+  const[zi,setZi]=useState(()=>{if(window.SB_CONF){try{const v=localStorage.getItem('lvsl-zi');if(v!=null)return +v;}catch(e){}return 2;}return init?.zi??2;});const zoom=ZOOMS[zi].d;
+  const[edit,setEdit]=useState(null); const[sel,setSel]=useState(null);
+  const[menu,setMenu]=useState(null); const[imp,setImp]=useState(null); const[toast,setToast]=useState('');
+  const now=useNow();
+  const cal=useMemo(()=>makeCal(new Date()),[]);
+  const actifs=useMemo(()=>ofs.filter(o=>!o.archive),[ofs]);
+  const archives=useMemo(()=>ofs.filter(o=>o.archive),[ofs]);
+  const sched=useMemo(()=>schedule(actifs,params,cal,now,archives),[actifs,archives,params,now]);
+  const[hist,setHist]=useState(false);
+  useEffect(()=>{const fin=actifs.filter(o=>{const x=sched.ofs[o.id];return x&&x.nbOps>0&&x.nbFaits===x.nbOps;});if(!fin.length)return;
+    setOfs(l=>l.map(o=>fin.some(f=>f.id===o.id)?{...o,archive:new Date().toISOString()}:o));setToast(fin.length>1?fin.length+' OF terminés, archivés dans l\'historique':'OF « '+fin[0].titre+' » terminé, archivé dans l\'historique');},[sched]);
+  useEffect(()=>{const miss=sched.tasks.filter(t=>t.done&&t.fixS==null);if(!miss.length)return;setOfs(l=>l.map(o=>{const m=miss.filter(t=>t.ofId===o.id);if(!m.length)return o;const e={...(o.etat||{})};m.forEach(t=>{e[t.code]={...(e[t.code]||{}),fixD:cal.w2date(t.s).toISOString()};});return{...o,etat:e};}));},[sched]);
+  useEffect(()=>{if(window.SB_CONF){try{localStorage.setItem('lvsl-zi',String(zi));}catch(e){}}else save({ofs,papiers,clients,params,zi,modeles});},[ofs,papiers,clients,params,zi,modeles]);
+  const sync=useSync({ofs,setOfs,reg:{papiers,clients,params,modeles},setReg:{papiers:setPapiers,clients:setClients,params:setParams,modeles:setModeles}});
+  useEffect(()=>{if(!toast)return;const t=setTimeout(()=>setToast(''),3500);return()=>clearTimeout(t);},[toast]);
+  const allClients=useMemo(()=>[...new Set([...clients,...ofs.map(o=>o.client).filter(Boolean)])].sort((a,b)=>a.localeCompare(b)),[clients,ofs]);
+  const upd=(id,fn)=>setOfs(l=>l.map(o=>o.id===id?fn(o):o));
+  const setEtat=(id,code,patch)=>upd(id,o=>{const e={...(o.etat||{})};const cur={...(e[code]||{}),...patch};Object.keys(cur).forEach(k=>cur[k]==null&&delete cur[k]);e[code]=cur;return{...o,etat:e};});
+  const toggleDone=t=>{if(t.done)setEtat(t.ofId,t.code,{done:null,fixD:null,doneAt:null});else setEtat(t.ofId,t.code,{done:true,fixD:fixAt(t),doneAt:new Date().toISOString()});};
+  const[todayTick,setTodayTick]=useState(0);const[daily,setDaily]=useState(false);
+  const fixAt=t=>{const nowW=cal.date2w(new Date());const day0=Math.floor(nowW/WD)*WD;const s=t.s>nowW?Math.max(day0,nowW-(t.e-t.s)):t.s;return cal.w2date(s).toISOString();};
+  const saveOf=of0=>{const{_focusOp,...of}=of0;
+    setOfs(l=>{let nl;if(l.some(o=>o.id===of.id))nl=l.map(o=>o.id===of.id?of:o);
+      else{nl=[...l];const added={...of,couleurIdx:of.couleurIdx??(l.length%OF_COLORS.length)};
+        const lv=o=>dateLivraison(o,params).getTime(); // nouvel OF inséré selon sa date de livraison
+        const i=nl.findIndex(o=>!o.batDe&&lv(o)>lv(added));if(i<0)nl.push(added);else nl.splice(i,0,added);}
+      return ensureBats(nl,params);});
+    setEdit(null);setToast('OF enregistré');
+  };
+  const move=(i,d)=>setOfs(l=>{const act=l.filter(o=>!o.archive);const j=i+d;if(j<0||j>=act.length)return l;const a=act[i],b=act[j];const n=[...l];const ia=n.indexOf(a),ib=n.indexOf(b);n[ia]=b;n[ib]=a;return ensureBats(n,params);});
+  async function onFiles(files){
+    const drafts=[],errs=[];
+    for(const f of files){try{const text=await pdfText(f);const r=parseDocument(text,papiers,todayIso());if(!r.length)errs.push(f.name);r.forEach(d=>drafts.push({...d,_file:f.name,_dup:ofs.some(o=>o.numero===d.numero&&o.titre===d.titre)}));}catch(e){errs.push(f.name);}}
+    setImp({drafts,errs});
+  }
+  const confirmImport=sel=>{const add=imp.drafts.filter((d,i)=>sel[i]);add.forEach(d=>{const{_file,_dup,...o}=d;saveOf({id:uid(),delai:params.delaiJ,etat:{},fichiersOk:false,...o});});setImp(null);setToast(add.length+' OF créé(s), hachurés tant que les fichiers ne sont pas validés');};
+  return <div className="app">
+    <header className="top">
+      <div className="brand"><span className="eyebrow">Le Vent Se Lève · atelier</span><h1>Planning impression</h1>{window.SB_CONF&&<span className={'sync '+sync.etat} title={sync.msg}>{sync.etat==='ok'?'● Enregistré':sync.etat==='busy'?'● Enregistrement…':'● Hors ligne : '+sync.msg}</span>}</div>
+      <div className="actions">
+        <label className="btn btn-primary file"><i className="ic">⇪</i>Importer facture / devis<input id="pdfin" type="file" accept="application/pdf" multiple onChange={e=>{onFiles([...e.target.files]);e.target.value='';}}/></label>
+        <button className="btn" onClick={()=>setTodayTick(x=>x+1)}><i className="ic">◉</i>Aujourd'hui</button>
+        <button className="btn" onClick={()=>setDaily(true)}><i className="ic">☑</i>Tâches du jour</button>
+        <button className="btn" onClick={()=>setHist(true)}><i className="ic">⟲</i>Historique <b className="cnt">{archives.length}</b></button>
+        <button className="btn btn-dark" onClick={()=>setEdit({id:uid(),type:'livre',source:'LVSL',delai:params.delaiJ,dateCommande:todayIso(),quantite:'',pages:'',largeur:'',hauteur:'',papierInt:'SRA3 Soporset 80 g Blanc',papierCouv:'Invercote 300 g',couleur:'NB',pelliculage:'non',exemplaire:false,fichiersOk:false,etat:{}})}>+ Nouvel OF</button>
+        <div className="zoomctl" role="group" aria-label="Échelle de temps"><button className="zb" onClick={()=>setZi(i=>Math.max(0,i-1))} disabled={zi===0} aria-label="Voir plus de jours">−</button><span className="zl"><small>Affichage</small>{ZOOMS[zi].l}</span><button className="zb" onClick={()=>setZi(i=>Math.min(ZOOMS.length-1,i+1))} disabled={zi===ZOOMS.length-1} aria-label="Voir moins de jours">+</button></div>
+        <div className="menuwrap"><button className="btn" onClick={()=>setMenu(menu?null:'papiers')}>☰ Listes & réglages</button></div>
+      </div>
+    </header>
+    <Gantt focus={focus} ofs={actifs} sched={sched} cal={cal} zoom={zoom} now={now} scrollTick={scrollTick} onFocus={setFocus} onSel={t=>{setFocus(t.ofId);setEdit({...ofs.find(o=>o.id===t.ofId),_focusOp:t.code});}} todayTick={todayTick} onPin={(t,w)=>setEtat(t.ofId,t.code,{nbD:cal.w2date(w).toISOString()})}/>
+    <OfList focus={focus} onFocus={id=>{setFocus(id);if(id)setScrollTick(x=>x+1);}} ofs={actifs} sched={sched} params={params} onEdit={setEdit} onMove={move} upd={upd} onDel={id=>{setOfs(l=>l.filter(o=>o.id!==id&&o.batDe!==id));if(focus===id)setFocus(null);}}/>
+    {edit&&<OfForm modeles={modeles} of={edit} cal={cal} fixAt={fixAt} tasks={sched.tasks.filter(t=>t.ofId===edit.id)} params={params} papiers={papiers} clients={allClients} onAddPapier={p=>setPapiers(l=>[...l,p])} onSave={saveOf} onClose={()=>setEdit(null)}/>}
+    {menu&&<Settings onRestore={c=>{setOfs(ensureBats(c.ofs||[],params));if(c.reglages){const r=c.reglages;r.papiers&&setPapiers(r.papiers);r.clients&&setClients(r.clients);r.params&&setParams({...DEFAULT_PARAMS,...r.params});r.modeles&&setModeles(r.modeles);}setMenu(null);setToast('Sauvegarde restaurée');}} modeles={modeles} setModeles={setModeles} tab={menu} setTab={setMenu} papiers={papiers} setPapiers={setPapiers} clients={allClients} setClients={setClients} params={params} setParams={setParams} onReset={()=>{setOfs(exemple());setMenu(null);setToast('Exemple rechargé');}}/>}
+    {hist&&<Historique ofs={archives} onClose={()=>setHist(false)} onDel={id=>setOfs(l=>l.filter(o=>o.id!==id))}/>}
+    {daily&&<Daily onNote={(t,v)=>setEtat(t.ofId,t.code,{note:v||null})} sched={sched} ofs={actifs} cal={cal} now={now} onToggle={toggleDone} onOpen={t=>{setDaily(false);setFocus(t.ofId);setEdit({...ofs.find(o=>o.id===t.ofId),_focusOp:t.code});}} onClose={()=>setDaily(false)}
+      onDur={(t,m)=>upd(t.ofId,o=>o.type==='autre'?{...o,opsManuelles:(o.opsManuelles||[]).map((x,j)=>(x.id||'M'+j)===t.code?{...x,op:m}:x)}:((o.extraOps||[]).some(x=>x.id===t.code)?{...o,extraOps:o.extraOps.map(x=>x.id===t.code?{...x,op:m}:x)}:{...o,surcharges:{...(o.surcharges||{}),[t.code]:m}}))}/>}
+    {imp&&<ImportReview imp={imp} onOk={confirmImport} onClose={()=>setImp(null)}/>}
+    {toast&&<div className="toast" role="status">{toast}</div>}
+  </div>;
+}
+async function pdfText(file){
+  const pdf=await pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;let t='';
+  for(let i=1;i<=pdf.numPages;i++){const c=await(await pdf.getPage(i)).getTextContent();t+=c.items.map(x=>x.str+(x.hasEOL?'\n':' ')).join('')+'\n';}
+  return t;
+}
+function Gantt({scrollTick,onFocus,todayTick,focus,ofs,sched,cal,zoom,now,onSel,onPin}){
+  const scRef=useRef(null), [drag,setDrag]=useState(null), [vw,setVw]=useState(1200);
+  useEffect(()=>{const el=scRef.current;if(!el)return;const ro=new ResizeObserver(()=>setVw(el.clientWidth));ro.observe(el);setVw(el.clientWidth);return()=>ro.disconnect();},[]);
+  const ppm=Math.max(0.05,(vw-LABW)/(zoom*WD));
+  const maxW=Math.max(WD*10,...sched.tasks.map(t=>t.e),...sched.waits.map(w=>w.e));
+  const nDays=Math.ceil((maxW+WD*3)/WD/5)*5; const W=nDays*WD*ppm;
+  const nowW=cal.date2w(now);
+  useEffect(()=>{const el=scRef.current;if(!el)return;const vis=el.clientWidth-LABW;el.scrollTo({left:Math.max(0,cal.date2w(new Date())*ppm-vis*0.2),behavior:todayTick?'smooth':'auto'});},[zoom,todayTick,vw>0]);
+  useEffect(()=>{if(!focus||!scRef.current)return;const ts=sched.tasks.filter(t=>t.ofId===focus);if(!ts.length)return;const s0=Math.min(...ts.map(t=>t.s));scRef.current.scrollTo({left:Math.max(0,s0*ppm-120),behavior:'smooth'});},[scrollTick]);
+  const fc=id=>focus&&id===focus?' foc':'';
+  const ofById=Object.fromEntries(ofs.map(o=>[o.id,o]));
+  const lanes=[];const wl=sched.waits.slice().sort((a,b)=>a.s-b.s).map(w=>{let i=lanes.findIndex(e=>e<=w.s);if(i<0){i=lanes.length;lanes.push(0);}lanes[i]=w.e;return{...w,lane:i};});
+  const hours=[9,10,11,12,13,14,15,16,17,18,19];
+  const down=(e,t)=>{e.currentTarget.setPointerCapture(e.pointerId);setDrag({t,x0:e.clientX,dx:0});};
+  const mv=e=>{if(drag&&!drag.t.done)setDrag({...drag,dx:e.clientX-drag.x0});};
+  const up=(e,t)=>{if(!drag){return;}const d=drag;setDrag(null);if(Math.abs(d.dx)<5){onFocus(t.ofId);return;}onPin(t,Math.max(nowW,Math.round(t.s+d.dx/ppm)));};
+  return <section className="gantt" aria-label="Planning machines">
+    <div className="gscroll" ref={scRef} onClick={e=>{if(!e.target.closest('.bar,.wait'))onFocus(null);}}>
+      <div className="ginner" style={{width:W+LABW}}>
+        <div className="ghead">
+          <div className="corner"><span>Machines</span><small>1 case = 1 heure</small></div>
+          <div className="days" style={{width:W}}>
+            {Array.from({length:nDays/5},(_,k)=>{const d0=cal.dayDate(k*5);return <div key={'w'+k} className={'wband w'+(isoWeek(d0)%2)} style={{left:k*5*WD*ppm,width:5*WD*ppm}}>Semaine {isoWeek(d0)}</div>;})}
+            {Array.from({length:nDays},(_,d)=>{const dd=cal.dayDate(d);const isToday=dd.toDateString()===now.toDateString();const dw=WD*ppm;
+              return <div key={d} className={'day d'+(d%2)+(d%5===0?' wk':'')+(isToday?' today':'')} style={{left:d*dw,width:dw}}>
+                <div className="dlab">{dw>90?<><span className="dwk">{dd.toLocaleDateString('fr-FR',{weekday:dw>200?'long':'short'})}</span><span className="dnum">{dd.getDate()}</span><span className="dmo">{dd.toLocaleDateString('fr-FR',{month:dw>200?'long':'short'})}</span></>:<span className="dnum">{dd.getDate()}</span>}{isToday&&dw>140&&<span className="todaytag">aujourd'hui</span>}</div>
+                <div className="hrs">{hours.map(h=><span key={h} className={h===12?'midi':h>=17?'soir':''} style={{width:60*ppm}}>{60*ppm>=22?h+'h':''}</span>)}</div>
+              </div>;})}
+          </div>
+        </div>
+        {MACHINES.map(m=><div className="grow" key={m.id}>
+          <div className={'rlab m-'+m.id}><span className="mpic" style={{'--mc':MCOL[m.id]}}><Picto m={m.id} size={20}/></span>{m.nom}</div>
+          <div className="rtrack" style={{width:W}}>
+            <Grid nDays={nDays} ppm={ppm} now={now} cal={cal}/>
+            {sched.tasks.filter(t=>t.machine===m.id).map(t=>{const of=ofById[t.ofId];const[bg,fg]=OF_COLORS[of.couleurIdx||0];const so=sched.ofs[t.ofId];
+              const dx=drag&&drag.t.ofId===t.ofId&&drag.t.code===t.code?drag.dx:0;const w=Math.max(6,(t.e-t.s)*ppm);
+              return <div key={t.ofId+t.code} className={'bar'+fc(t.ofId)+(t.done?' done':'')+(!of.fichiersOk&&!t.done?' hatch':'')+(so.retard&&!t.done?' late':'')+(t.notBefore!=null&&!t.done?' pinned':'')}
+                style={{left:t.s*ppm+dx,width:w,'--bg':bg,'--fg':fg}} title={of.titre+' · '+t.label+' · '+fmtDH(cal.w2date(t.s))+' → '+fmtDH(cal.w2dateEnd(t.e))}
+                onPointerDown={e=>down(e,t)} onPointerMove={mv} onPointerUp={e=>up(e,t)} tabIndex={0} onDoubleClick={()=>onSel(t)} onKeyDown={e=>{if(e.key==='Enter')onSel(t);else if(e.key===' '){e.preventDefault();onFocus(t.ofId);}}}>
+                {t.machine==='presse'&&t.mach>t.op&&!t.done&&<i className="launch" style={{width:Math.max(2,t.op*ppm)}}/>}
+                {w>14&&<Picto m={t.machine} size={w>40?16:12} className="bpic"/>}{t.done&&w>30&&<b className="chk">✓</b>}{w>70&&<span className="bt"><b>{of.batDe?'BAT · ':''}{of.titre}</b><small>{t.label}</small></span>}
+              </div>;})}
+            <div className="nowline" style={{left:nowW*ppm}}/>
+          </div>
+        </div>)}
+        <div className="grow waits" style={{height:Math.max(1,lanes.length)*24+12}}>
+          <div className="rlab">Séchage · envois<small>sans opérateur</small></div>
+          <div className="rtrack" style={{width:W}}>
+            <Grid nDays={nDays} ppm={ppm} now={now} cal={cal}/>
+            {wl.map((w,i)=>{const of=ofById[w.ofId];const[bg,fg]=OF_COLORS[of.couleurIdx||0];const ww=(w.e-w.s)*ppm;
+              return <div key={i} className={'wait'+fc(w.ofId)} style={{left:w.s*ppm,width:Math.max(4,ww),top:6+w.lane*24,'--bg':bg,'--fg':fg}} title={of.titre+' · '+w.label} onClick={()=>onFocus(w.ofId)} onDoubleClick={()=>onSel({ofId:w.ofId})}>{ww>70&&<span>{w.label} · {of.titre}</span>}</div>;})}
+            <div className="nowline" style={{left:nowW*ppm}}/>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div className="legend">
+      <span><i className="sw"/>À faire</span><span><i className="sw hatch"/>Fichiers client non validés</span><span><i className="sw done"/>Fait</span>
+      <span><i className="sw late"/>Expédition en retard</span><span><i className="sw launch"/>Lancement presse (opérateur)</span><span><i className="sw waitsw"/>Séchage / envoi</span>
+      <span><i className="sw selsw"/>OF sélectionné</span><span><i className="sw midisw"/>Midi, soir et nuit : seule la presse tourne</span><span className="hint">Glisser une tâche = « pas avant » ; 1 clic = entourer l'OF · double-clic = ouvrir l'OF (marquer fait)</span>
+    </div>
+  </section>;
+}
+function Grid({nDays,ppm,now,cal}){return <>{Array.from({length:nDays},(_,d)=><div key={d} className={'gday d'+(d%2)+(d%5===0?' wk':'')+(cal.dayDate(d).toDateString()===now.toDateString()?' today':'')} style={{left:d*WD*ppm,width:WD*ppm,backgroundSize:(60*ppm)+'px 100%'}}><i className="lunch" style={{left:L0*ppm,width:(L1-L0)*ppm}}/><i className="lunch soir" style={{left:E0*ppm,width:(WD-E0)*ppm}}/></div>)}</>;}
+function OfList({focus,onFocus,ofs,sched,params,onEdit,onMove,upd,onDel}){
+  const[confirm,setConfirm]=useState(null);
+  return <section className="oflist" aria-label="Ordres de fabrication">
+    <div className="olhead"><h2>Ordres de fabrication <small>{ofs.length} · placés au plus tôt dans cet ordre de priorité · 1 clic = voir ses étapes sur le planning · double-clic = ouvrir l'OF</small></h2>{focus&&<button className="btn sm" onClick={()=>onFocus(null)}>Afficher tous les OF</button>}</div>
+    <div className="tblwrap"><table>
+      <thead><tr><th>Prio</th><th>N° commande</th><th>Client</th><th>Titre</th><th className="n">Qté</th><th className="n">Pages</th><th>Fichiers</th><th>Exemplaire</th><th>Avancement</th><th>Fin prévue</th><th>Expé. au plus tard</th><th>Livraison</th><th/></tr></thead>
+      <tbody>{ofs.map((o,i)=>{const s=sched.ofs[o.id];const[bg,fg]=OF_COLORS[o.couleurIdx||0];if(!s)return null;
+        return <tr key={o.id} className={'ofrow'+(s.retard?' rlate':'')+(focus===o.id?' sel':'')} style={{'--bg':bg,'--fg':fg}} onClick={e=>{if(e.target.closest('button'))return;onFocus(o.id);}} onDoubleClick={e=>{if(e.target.closest('button'))return;onEdit(o);}} title="1 clic : voir les étapes · double-clic : ouvrir l'OF">
+          <td className="prio"><button className="ib" aria-label="Monter" onClick={()=>onMove(i,-1)}>▲</button><button className="ib" aria-label="Descendre" onClick={()=>onMove(i,1)}>▼</button></td>
+          <td>{o.numero}<span className={'src '+o.source}>{o.source}</span></td>
+          <td>{o.client}</td><td className="tt">{o.titre}{o.enlevement&&!o.batDe&&<span className="tag">enlèvement</span>}{o.type==='autre'&&<span className="tag">hors livre</span>}</td>
+          <td className="n">{o.quantite}</td><td className="n">{o.pages}</td>
+          <td><button className={'chip '+(o.fichiersOk?'ok':'ko')} onClick={()=>upd(o.id,x=>({...x,fichiersOk:!x.fichiersOk}))}>{o.exemplaire?(o.fichiersOk?'BAT validé':'BAT à valider'):(o.fichiersOk?'OK':'En attente')}</button></td>
+          <td>{o.batDe?<span className="chip bat">BAT</span>:o.exemplaire?<span>Oui · BAT</span>:<span className="muted">Non</span>}</td>
+          <td><span className="prog"><i style={{width:(s.nbFaits/s.nbOps*100)+'%'}}/></span> {s.nbFaits}/{s.nbOps}</td>
+          <td className={s.retard?'bad':''}>{fmtDH(s.finDate)}</td><td>{fmtD(s.limite)}</td><td>{fmtD(s.livraison)}</td>
+          <td><div className="acts"><button className="btn sm" onClick={()=>onEdit(o.batDe?ofs.find(p=>p.id===o.batDe)||o:o)}>Modifier</button>
+            {confirm===o.id?<button className="btn sm btn-danger" onClick={()=>{onDel(o.id);setConfirm(null);}}>Confirmer</button>:<button className="btn sm" onClick={()=>setConfirm(o.id)}>Suppr.</button>}</div></td>
+        </tr>;})}</tbody>
+    </table></div>
+  </section>;
+}
+function DurInput({id,min,onCommit}){
+  const[v,setV]=useState(hhmm(min));const[err,setErr]=useState(false);
+  useEffect(()=>{setV(hhmm(min));setErr(false);},[min]);
+  const commit=()=>{const m=parseHHMM(v);if(m==null||isNaN(m)||m<1){setErr(true);return;}setErr(false);if(m!==Math.round(min))onCommit(m);else setV(hhmm(min));};
+  const step=d=>{const cur=parseHHMM(v);const base=(cur==null||isNaN(cur))?Math.round(min):cur;const m=Math.max(1,base+d);setV(hhmm(m));setErr(false);onCommit(m);};
+  return <div className="durwrap"><input id={id} className={'inp n dur'+(err?' err':'')} value={v} onChange={e=>setV(e.target.value)} onBlur={commit}
+      onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();commit();}else if(e.key==='ArrowUp'){e.preventDefault();step(1);}else if(e.key==='ArrowDown'){e.preventDefault();step(-1);}}} aria-label="Durée prévue (h:mm)" title="Format h:mm, par exemple 0:25 ou 1:30"/>
+    <span className="spin"><button type="button" tabIndex={-1} aria-label="Plus 1 minute" onClick={()=>step(1)}>▲</button><button type="button" tabIndex={-1} aria-label="Moins 1 minute" onClick={()=>step(-1)}>▼</button></span></div>;
+}
+function OfForm({of,cal,fixAt,tasks,params,papiers,clients,modeles,onAddPapier,onSave,onClose}){
+  const initMan=(of.opsManuelles||modeles[0]?.ops||[]).map((m,i)=>({...m,id:m.id||('M'+i)}));
+  const[f,setF]=useState({...of,opsManuelles:initMan,extraOps:[...(of.extraOps||[])],surcharges:{...(of.surcharges||{})},etat:{...(of.etat||{})}});
+  const[tab,setTab]=useState(of._focusOp?'ops':'infos');
+  const[newPap,setNewPap]=useState(null);const[insAfter,setInsAfter]=useState('');
+  useEffect(()=>{if(tab==='ops'&&of._focusOp){const el=document.getElementById('av-'+of._focusOp);if(el)el.scrollIntoView({block:'center'});}},[tab]);
+  const s=(k,v)=>setF(x=>({...x,[k]:v}));
+  const ops=useMemo(()=>{try{return buildOps(f,params);}catch(e){return[];}},[f,params]);
+  const tByCode=Object.fromEntries(tasks.map(t=>[t.code,t]));
+  const liv=dateLivraison(f,params), lim=dateExpeLimite(f,params);
+  const isBat=!!f.batDe, man=f.type==='autre';
+  const PapSel=({k,id})=><select id={id} className="inp" value={f[k]||''} onChange={e=>{if(e.target.value==='__add')setNewPap(k);else s(k,e.target.value);}}>
+    {!papiers.includes(f[k])&&f[k]&&<option value={f[k]}>{f[k]} (non répertorié)</option>}
+    {papiers.map(p=><option key={p} value={p}>{p}</option>)}<option value="__add">+ Ajouter un papier…</option></select>;
+  const setEt=(code,fn)=>setF(x=>{const et={...(x.etat||{})};const cur=fn({...(et[code]||{})});et[code]=cur;return{...x,etat:et};});
+  const setDone=(code,on)=>setEt(code,cur=>{if(on){cur.done=true;cur.doneAt=new Date().toISOString();const t=tByCode[code];cur.fixD=t?fixAt(t):new Date().toISOString();}else{delete cur.done;delete cur.fixD;delete cur.doneAt;}return cur;});
+  // opérations ajoutées / manuelles : édition et déplacement
+  const isExtra=code=>f.extraOps.some(x=>x.id===code);
+  const manIdx=code=>f.opsManuelles.findIndex(m=>m.id===code);
+  const editOp=(code,k,v)=>{if(man)setF(x=>({...x,opsManuelles:x.opsManuelles.map(m=>m.id===code?{...m,[k]:v}:m)}));else setF(x=>({...x,extraOps:x.extraOps.map(m=>m.id===code?{...m,[k]:v}:m)}));};
+  const delOp=code=>{if(man)s('opsManuelles',f.opsManuelles.filter(m=>m.id!==code));else s('extraOps',f.extraOps.filter(m=>m.id!==code));};
+  const moveOp=(code,d)=>{
+    if(man){const i=manIdx(code),j=i+d;if(j<0||j>=f.opsManuelles.length)return;const n=[...f.opsManuelles];[n[i],n[j]]=[n[j],n[i]];s('opsManuelles',n);return;}
+    const L=ops.map(o=>o.code).filter(c=>c!==code);const x=f.extraOps.find(m=>m.id===code);const k=L.indexOf(x.after);const nk=k+d;
+    if(nk<0||nk>=L.length)return;s('extraOps',f.extraOps.map(m=>m.id===code?{...m,after:L[nk]}:m));};
+  const addOp=()=>{const id=(man?'M':'X')+uid();
+    if(man)s('opsManuelles',[...f.opsManuelles,{id,label:'Nouvelle opération',machine:'massicot',op:10}]);
+    else{const after=insAfter||ops[ops.length-1]?.code;s('extraOps',[...f.extraOps,{id,label:'Nouvelle opération',machine:'massicot',op:10,after}]);}};
+  const nbDone=ops.filter(o=>(f.etat[o.code]||{}).done).length;
+  const grpName={Intérieur:'Fabrication intérieur',Couverture:'Fabrication couverture',Assemblage:'Assemblage du livre',Opérations:'Opérations'};
+  return <div className="overlay"><form className="modal ofm" onSubmit={e=>{e.preventDefault();onSave(f);}} aria-label="Ordre de fabrication">
+    <div className="mhead"><div className="mh1"><span className="eyebrow">{isBat?'OF exemplaire BAT':'Ordre de fabrication'} · {f.source}</span><h3>{f.titre||'Nouvel OF'}</h3>
+      <div className="sumband"><span className={'pill src '+f.source}>{f.source}</span>{f.numero&&<span className="pill">N° {f.numero}</span>}{f.client&&<span className="pill">{f.client}</span>}{f.quantite&&<span className="pill">{f.quantite} ex.</span>}
+        <span className={'pill '+(f.fichiersOk?'ok':'ko')}>{f.fichiersOk?(f.exemplaire?'BAT validé':'Fichiers validés'):(f.exemplaire?'BAT à valider':'Fichiers en attente')}</span>
+        <span className="pill">{f.enlevement?'Enlèvement':'Expédition'} au plus tard {fmtD(lim)}</span></div>
+      <div className="tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={tab==='infos'} className={tab==='infos'?'on':''} onClick={()=>setTab('infos')}>Commande · caractéristiques · délais</button>
+        <button type="button" role="tab" aria-selected={tab==='ops'} className={tab==='ops'?'on':''} onClick={()=>setTab('ops')}>Opérations <b className="cnt">{nbDone}/{ops.length}</b></button>
+        <div className="typewrap"><span className="typelbl">Type d'OF</span><div className="seg typeseg" role="radiogroup" aria-label="Type d'OF">{[['livre','Livre dos carré collé'],['autre','Hors livre']].map(([v,l])=><button type="button" role="radio" aria-checked={f.type===v} key={v} className={f.type===v?'on':''} onClick={()=>s('type',v)}>{l}</button>)}</div></div></div></div>
+      <button type="button" className="ib x" onClick={onClose} aria-label="Fermer">✕</button></div>
+    <div className="mbody">
+    {tab==='infos'&&<>
+      {isBat&&<p className="note">OF d'un exemplaire BAT à envoyer au client. Indépendant de l'OF de production, qui est placé par défaut {params.attenteBAT} jours ouvrés après la fin de ce BAT.</p>}
+      <section className="fsec"><h4 className="fsh c1">Commande</h4>
+        <div className="g4">
+        <Fld l="N° commande ou facture"><input id="f-num" className="inp" value={f.numero||''} onChange={e=>s('numero',e.target.value)} required/></Fld>
+        <Fld l="Client"><input id="f-cli" className="inp" list="dl-cli" value={f.client||''} onChange={e=>s('client',e.target.value)} required/><datalist id="dl-cli">{clients.map(c=><option key={c} value={c}/>)}</datalist></Fld>
+        <div className="span2"><Fld l="Titre du livre ou projet"><input id="f-tit" className="inp" value={f.titre||''} onChange={e=>s('titre',e.target.value)} required/></Fld></div>
+      </div></section>
+      <section className="fsec"><h4 className="fsh c2">Caractéristiques{man?'':' du livre'}</h4><div className="g4">
+        <Fld l="Largeur (mm)"><input id="f-l" className="inp" type="number" step="0.5" value={f.largeur} onChange={e=>s('largeur',e.target.value)}/></Fld>
+        <Fld l="Hauteur (mm)"><input id="f-h" className="inp" type="number" step="0.5" value={f.hauteur} onChange={e=>s('hauteur',e.target.value)}/></Fld>
+        <Fld l="Quantité"><input id="f-q" className="inp" type="number" min="1" value={f.quantite} onChange={e=>s('quantite',e.target.value)} required/></Fld>
+        <Fld l="Nombre de pages"><input id="f-p" className="inp" type="number" min="1" value={f.pages} onChange={e=>s('pages',e.target.value)}/></Fld>
+        <Fld l="Papier intérieur"><PapSel k="papierInt" id="f-pi"/></Fld>
+        <Fld l="Impression intérieur"><select id="f-c" className="inp" value={f.couleur} onChange={e=>s('couleur',e.target.value)}><option value="NB">N/B</option><option value="Couleur">Couleur</option></select></Fld>
+        <Fld l="Papier intérieur secondaire"><select id="f-pi2" className="inp" value={f.papierInt2||''} onChange={e=>{if(e.target.value==='__add')setNewPap('papierInt2');else s('papierInt2',e.target.value);}}><option value="">Aucun</option>{papiers.map(p=><option key={p} value={p}>{p}</option>)}<option value="__add">+ Ajouter un papier…</option></select></Fld>
+        <Fld l="Pages sur papier secondaire"><input id="f-pg2" className="inp" disabled={!f.papierInt2} placeholder={f.papierInt2?'ex. 1-16, 145-160':'—'} value={f.pagesInt2||''} onChange={e=>s('pagesInt2',e.target.value)}/></Fld>
+        <div className="span2"><Fld l="Papier couverture"><PapSel k="papierCouv" id="f-pc"/></Fld></div>
+        <Fld l="Pelliculage"><select id="f-pel" className="inp" value={f.pelliculage} onChange={e=>s('pelliculage',e.target.value)}><option value="non">Non</option><option value="brillant">Brillant</option><option value="mat">Mat</option></select></Fld>
+      </div>
+      {newPap&&<div className="addrow"><input id="f-np" className="inp" autoFocus placeholder="Nom du nouveau papier, ex. SRA3 Munken Premium Cream 100 g" onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();const v=e.target.value.trim();if(v){onAddPapier(v);s(newPap,v);}setNewPap(null);}}}/><button type="button" className="btn" onClick={()=>{const v=document.getElementById('f-np').value.trim();if(v){onAddPapier(v);s(newPap,v);}setNewPap(null);}}>Ajouter</button></div>}
+      </section>
+      <section className="fsec"><h4 className="fsh c3">Délais, BAT et livraison</h4><div className="g4">
+        {!isBat?<Fld l="Exemplaire client avant impression"><select id="f-ex" className="inp" value={f.exemplaire?'1':'0'} onChange={e=>s('exemplaire',e.target.value==='1')}><option value="0">Non</option><option value="1">Oui : OF BAT + OF production</option></select>
+          {f.exemplaire&&<div className="sub2 inline"><span className="lbl">Production après le BAT de</span><input id="f-att" className="inp n" type="number" min="0" value={f.attenteBAT??params.attenteBAT} onChange={e=>s('attenteBAT',e.target.value)}/><span className="lbl">j ouvrés</span></div>}</Fld>:<div/>}
+        <Fld l="Date de commande"><input id="f-dc" className="inp" type="date" value={f.dateCommande||''} onChange={e=>s('dateCommande',e.target.value)}/></Fld>
+        <Fld l="Délai client (jours calendaires)"><input id="f-d" className="inp" type="number" min="1" value={f.delai||14} onChange={e=>{s('delai',e.target.value);s('livraison','');}}/></Fld>
+        <Fld l="Livraison client"><input id="f-liv" className="inp" type="date" value={f.livraison||liv.toISOString().slice(0,10)} onChange={e=>s('livraison',e.target.value)}/>
+          <label className="under"><input id="f-enl" type="checkbox" checked={!!f.enlevement} onChange={e=>s('enlevement',e.target.checked)}/> Enlèvement sur site</label></Fld>
+      </div>
+      <div className={'checks valid '+(f.fichiersOk?'ok':'ko')}><label><input id="f-ok" type="checkbox" checked={!!f.fichiersOk} onChange={e=>s('fichiersOk',e.target.checked)}/> {f.exemplaire?'BAT validé par le client (fichiers de production OK)':'Fichiers client validés'}</label>
+        <span>{f.fichiersOk?'L\'OF peut démarrer.':'Sans cette case, l\'OF est hachuré et ne peut pas démarrer.'} {f.enlevement?'Fin de fabrication':'Expédition'} au plus tard le <b>{fmtD(lim)}</b>{f.enlevement?'':' (livraison '+fmtD(liv)+' moins '+params.transportJO+' j ouvrés de transport)'}.</span></div>
+      </section>
+    </>}
+    {tab==='ops'&&<section className="fsec opsec">
+      {man&&<div className="row modrow"><span className="lbl">Partir d'un modèle :</span>{modeles.map(m=><button type="button" key={m.id} className="btn sm" onClick={()=>s('opsManuelles',m.ops.map(x=>({...x,id:'M'+uid()})))}>{m.nom}</button>)}</div>}
+      <div className="tblwrap"><table className="optbl compact"><thead><tr><th>Opération</th><th>Données techniques</th><th className="n">Durée prévue</th><th className="c">Fait</th><th/></tr></thead><tbody>
+        {ops.map((o,i)=>{const e=(f.etat||{})[o.code]||{};const editable=man||isExtra(o.code);const forced=!editable&&f.surcharges[o.code]!=null&&f.surcharges[o.code]!=='';
+          const grpRow=!man&&o.grp&&(i===0||ops[i-1].grp!==o.grp);const src=man?f.opsManuelles.find(m=>m.id===o.code):f.extraOps.find(m=>m.id===o.code);
+          return <React.Fragment key={o.code}>{grpRow&&<tr className={'grprow g-'+o.grp}><td colSpan={5}>{grpName[o.grp]||o.grp}</td></tr>}<tr id={'av-'+o.code} className={(of._focusOp===o.code?'focusop':'')+(e.done?' isdone':'')+(isExtra(o.code)?' extra':'')}>
+          <td>{editable&&src?<div className="manop"><Picto m={src.machine} size={20} className="mpicl"/><input id={'m-l'+o.code} className="inp" value={src.label} onChange={ev=>editOp(o.code,'label',ev.target.value)} aria-label="Intitulé"/>
+                <select id={'m-m'+o.code} className="inp" value={src.machine} onChange={ev=>editOp(o.code,'machine',ev.target.value)} aria-label="Machine">{MACHINES.map(x=><option key={x.id} value={x.id}>{x.nom}</option>)}</select></div>
+              :<><span className="opname"><Picto m={o.machine} size={18}/>{o.label}</span><span className="opmach">{MACHINES.find(m=>m.id===o.machine).nom}{o.waitH?' · puis séchage '+o.waitH+' h':''}</span></>}</td>
+          <td className="notecell"><NoteInput id={'n-'+o.code} value={e.note||''} onCommit={v=>setEt(o.code,cur=>{if(v)cur.note=v;else delete cur.note;return cur;})}/></td>
+          <td className="n"><div className="durcell"><DurInput id={'d-'+o.code} min={o.op} onCommit={m=>editable?editOp(o.code,'op',m):s('surcharges',{...f.surcharges,[o.code]:m})}/>
+            {forced&&<button type="button" className="ib" title="Revenir au temps calculé" onClick={()=>{const sc={...f.surcharges};delete sc[o.code];s('surcharges',sc);}}>↺ calculé</button>}</div></td>
+          <td className="c"><input id={'done-'+o.code} type="checkbox" className="big" checked={!!e.done} onChange={ev=>setDone(o.code,ev.target.checked)} aria-label={'Fait : '+o.label}/></td>
+          <td className="opact">{editable&&<><button type="button" className="ib" aria-label="Monter" title="Monter" onClick={()=>moveOp(o.code,-1)}>▲</button><button type="button" className="ib" aria-label="Descendre" title="Descendre" onClick={()=>moveOp(o.code,1)}>▼</button><button type="button" className="ib" aria-label="Retirer" title="Retirer" onClick={()=>delOp(o.code)}>✕</button></>}
+            {e.nbD&&!e.done&&<button type="button" className="btn sm" onClick={()=>setEt(o.code,cur=>{delete cur.nbD;return cur;})}>Replacer au plus tôt</button>}</td></tr></React.Fragment>;})}
+      </tbody></table></div>
+      <div className="row addop"><button type="button" className="btn sm btn-dark" onClick={addOp}>+ Ajouter une opération</button>
+        {!man&&<><span className="lbl">après</span><select id="f-ins" className="inp" value={insAfter||ops[ops.length-1]?.code||''} onChange={e=>setInsAfter(e.target.value)}>{ops.map(o=><option key={o.code} value={o.code}>{o.label}</option>)}</select></>}
+        <span className="note">{man?'Les opérations s\'enchaînent dans l\'ordre du tableau (▲▼ pour déplacer).':'Une opération ajoutée s\'insère dans l\'enchaînement ; ▲▼ la déplace entre deux opérations.'} Un pelliculage ajoute 12 h de séchage.</span></div>
+    </section>}
+    </div>
+    <div className="mfoot"><button type="button" className="btn" onClick={onClose}>Annuler</button><button className="btn btn-primary" type="submit">Enregistrer l'OF</button></div>
+  </form></div>;
+}
+/* Fiche A4 des tâches du jour (PDF). Dans claude.ai : enregistrement via la capacité downloads ; ailleurs : téléchargement direct. */
+async function pdfJour(list,ofById,cal,di){
+  const {jsPDF}=window.jspdf;const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const jour=cal.dayDate(di).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  doc.setFont('helvetica','bold');doc.setFontSize(15);doc.text('Tâches du jour : '+jour,12,15);
+  doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(90);doc.text('Le Vent Se Lève · atelier impression · '+list.length+' tâches, dans l\'ordre de passage prévu',12,21);doc.setTextColor(0);
+  const hex=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+  const body=list.map(t=>{const of=ofById[t.ofId];const pap=t.code==='IMP_INT'?'\n'+(of.couleur==='NB'?'N/B':'Couleur')+' · '+of.papierInt+(of.papierInt2?' + '+of.papierInt2+' (p. '+(of.pagesInt2||'?')+')':''):t.code==='IMP_COUV'?'\n'+of.papierCouv:'';
+    return {done:!!t.done,bg:OF_COLORS[of.couleurIdx||0][0],row:['',cal.w2date(t.s).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),t.label+'\n'+MACHINES.find(m=>m.id===t.machine).nom,(of.batDe?'BAT · ':'')+of.titre+'\nOF '+of.numero+' · Qté '+of.quantite+pap,((of.etat||{})[t.code]||{}).note||'',hhmm(t.op)+(t.machine==='presse'?'\n+ machine '+hhmm(t.mach):'')]};});
+  doc.autoTable({startY:26,margin:{left:10,right:10},head:[['Fait','Heure','Opération','Titre','Données techniques','Durée']],body:body.map(b=>b.row),
+    styles:{font:'helvetica',fontSize:8.5,cellPadding:2,valign:'middle',lineColor:[200,200,200],lineWidth:0.2,overflow:'linebreak'},
+    headStyles:{fillColor:[31,42,68],textColor:255,fontStyle:'bold'},
+    columnStyles:{0:{cellWidth:11},1:{cellWidth:14,fontStyle:'bold'},2:{cellWidth:34,fontStyle:'bold'},3:{cellWidth:58},4:{cellWidth:51},5:{cellWidth:22,halign:'right'}},
+    didParseCell:d=>{if(d.section==='body'){const b=body[d.row.index];d.cell.styles.fillColor=b.done?[225,225,225]:hex(b.bg);if(d.column.index===4)d.cell.styles.minCellHeight=12;}},
+    didDrawCell:d=>{if(d.section==='body'&&d.column.index===0){const x=d.cell.x+3,y=d.cell.y+d.cell.height/2-2.5;doc.setDrawColor(40);doc.setLineWidth(0.4);doc.setFillColor(255,255,255);doc.rect(x,y,5,5,'FD');if(body[d.row.index].done){doc.setLineWidth(0.6);doc.line(x+1,y+2.6,x+2.2,y+3.9);doc.line(x+2.2,y+3.9,x+4.2,y+1.1);}}},
+    didDrawPage:()=>{doc.setFontSize(8);doc.setTextColor(120);doc.text('Imprimé le '+new Date().toLocaleString('fr-FR'),10,290);doc.text('Page '+doc.getNumberOfPages(),200,290,{align:'right'});doc.setTextColor(0);}});
+  const name='taches-du-jour-'+cal.dayDate(di).toISOString().slice(0,10)+'.pdf';
+  const dl=window.claude?.use?await window.claude.use('downloads'):null;
+  if(!dl){doc.save(name);return '';}
+  try{await dl.save({filename:name,data:doc.output('blob')});return '';}catch(e){return e&&e.code==='declined'?'':'Le PDF n\'a pas pu être enregistré ici. Ouvre le planning dans le navigateur pour l\'imprimer.';}
+}
+function Daily({sched,ofs,cal,now,onToggle,onOpen,onClose,onDur,onNote}){
+  const[msg,setMsg]=useState('');
+  const nowW=cal.date2w(now);const di=Math.floor(nowW/WD);const d0=di*WD,d1=d0+WD;
+  const ofById=Object.fromEntries(ofs.map(o=>[o.id,o]));
+  const list=sched.tasks.filter(t=>t.s>=d0&&t.s<d1&&ofById[t.ofId]&&ofById[t.ofId].fichiersOk).sort((a,b)=>a.s-b.s);
+  const nb=list.filter(t=>t.done).length;
+  return <div className="overlay"><div className="modal daily" role="dialog" aria-label="Tâches du jour">
+    <div className="mhead"><div><span className="eyebrow">Tâches du jour · {nb}/{list.length} faites</span><h3>{cal.dayDate(di).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}</h3></div>
+      <div className="row0"><button className="btn btn-dark" onClick={()=>pdfJour(list,ofById,cal,di).then(m=>m&&setMsg(m))} disabled={!list.length}>⎙ Imprimer (PDF A4)</button><button className="ib x" onClick={onClose} aria-label="Fermer">✕</button></div></div>
+    {msg&&<p className="warn pdfmsg">{msg}</p>}
+    <div className="mbody">
+      {list.length===0?<p className="note">Aucune tâche prévue aujourd'hui.</p>:
+      <><div className="dhead"><span>Fait</span><span>Heure</span><span>Opération</span><span>Titre</span><span>Données techniques</span><span>Durée</span><span/></div><ul className="dlist">{list.map(t=>{const of=ofById[t.ofId];const[bg,fg]=OF_COLORS[of.couleurIdx||0];const late=!t.done&&t.s<nowW;
+        return <li key={t.ofId+t.code} className={t.done?'done':''} style={{'--bg':bg,'--fg':fg}}>
+          <input id={'dl-'+t.ofId+t.code} type="checkbox" className="big" checked={!!t.done} onChange={()=>onToggle(t)} aria-label={'Fait : '+t.label}/>
+          <span className="dh">{cal.w2date(t.s).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</span>
+          <span className="dop"><Picto m={t.machine} size={18}/>{t.label}</span>
+          <span className="dt"><span className="dtit">{of.batDe?'BAT · ':''}{of.titre}</span><span className="dmeta"><span>OF {of.numero}</span><span>Qté {of.quantite}</span>{t.code==='IMP_INT'&&<span>{of.couleur==='NB'?'N/B':'Couleur'} · {of.papierInt}{of.papierInt2?' + '+of.papierInt2+' (p. '+(of.pagesInt2||'?')+')':''}</span>}{t.code==='IMP_COUV'&&<span>{of.papierCouv}</span>}{!of.fichiersOk&&<span className="dwarn">fichiers non validés</span>}</span></span>
+          <NoteInput id={'dn-'+t.ofId+t.code} value={((of.etat||{})[t.code]||{}).note||''} onCommit={v=>onNote(t,v)}/>
+          <DurInput id={'dd-'+t.ofId+t.code} min={t.op} onCommit={m=>onDur(t,m)}/>
+          <button className="btn sm" onClick={()=>onOpen(t)}>OF</button>
+        </li>;})}</ul></>}
+      <p className="note">Liste dans l'ordre de passage prévu. Seuls les OF dont les fichiers sont validés apparaissent ici. Cocher une tâche la marque faite sur le planning et dans l'OF ; les tâches suivantes se recalculent aussitôt.</p>
+    </div></div></div>;
+}
+function NoteInput({id,value,onCommit}){const[v,setV]=useState(value);const r=useRef(null);useEffect(()=>setV(value),[value]);
+  useEffect(()=>{const el=r.current;if(el){el.style.height='auto';el.style.height=(el.scrollHeight+2)+'px';}},[v]);
+  return <textarea ref={r} id={id} className="inp note" rows={1} value={v} placeholder="Réglages, remarques…" onChange={e=>setV(e.target.value)} onBlur={()=>{if(v!==value)onCommit(v.trim());}} aria-label="Données techniques"/>;}
+function Historique({ofs,onClose,onDel}){
+  const[q,setQ]=useState('');const[sel,setSel]=useState(null);const[conf,setConf]=useState(false);
+  const norm=x=>String(x||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const P=DEFAULT_PARAMS;
+  const list=ofs.slice().sort((a,b)=>String(b.archive).localeCompare(String(a.archive))).filter(o=>{if(!q.trim())return true;
+    const hay=norm([o.numero,o.client,o.titre,o.papierInt,o.papierInt2,o.pagesInt2,o.papierCouv,o.source,o.largeur+'x'+o.hauteur,...Object.values(o.etat||{}).map(e=>e.note)].join(' '));
+    return norm(q).split(/\s+/).every(w=>hay.includes(w));});
+  const o=sel&&ofs.find(x=>x.id===sel);
+  return <div className="overlay"><div className="modal hist" role="dialog" aria-label="Historique">
+    <div className="mhead"><div><span className="eyebrow">Historique · {ofs.length} OF réalisés</span><h3>{o?o.titre:'OF terminés'}</h3></div><button className="ib x" onClick={onClose} aria-label="Fermer">✕</button></div>
+    <div className="mbody">
+      {!o?<>
+        <input id="h-q" className="inp" autoFocus placeholder="Rechercher : client, n° d'OF, titre, papier, données techniques…" value={q} onChange={e=>setQ(e.target.value)}/>
+        <ul className="hcards">{list.map(x=>{const[bg,fg]=OF_COLORS[x.couleurIdx||0];const nbN=Object.values(x.etat||{}).filter(e=>e.note).length;
+          return <li key={x.id} style={{'--bg':bg,'--fg':fg}} onClick={()=>setSel(x.id)} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter')setSel(x.id);}}>
+            <div className="hc1"><span className="hdate">{fmtD(new Date(x.archive))}</span><span className={'pill src '+x.source}>{x.source}</span></div>
+            <div className="hc2"><b className="htit">{x.titre}{x.batDe&&<span className="tag">BAT</span>}</b><span className="hcli">{x.client} · N° {x.numero}</span></div>
+            <div className="hc3"><span><b>{x.quantite}</b> ex.</span><span><b>{x.pages}</b> p.</span><span>{x.largeur}×{x.hauteur} mm</span></div>
+            <div className="hc4"><span>{x.papierInt}{x.papierInt2?' + '+x.papierInt2:''}</span>{nbN>0&&<span className="pill">{nbN} note{nbN>1?'s':''} technique{nbN>1?'s':''}</span>}</div>
+          </li>;})}</ul>
+        {list.length===0&&<p className="note">{ofs.length?'Aucun OF ne correspond à la recherche.':'Aucun OF terminé pour l\'instant. Un OF arrive ici automatiquement quand toutes ses opérations sont cochées « Fait ».'}</p>}
+      </>:<>
+        <button className="btn sm" onClick={()=>{setSel(null);setConf(false);}}>← Retour à la liste</button>
+        <div className="sumband"><span className={'pill src '+o.source}>{o.source}</span><span className="pill">N° {o.numero}</span><span className="pill">{o.client}</span><span className="pill ok">Terminé le {fmtDH(new Date(o.archive))}</span></div>
+        <div className="hgrid">
+          <section className="fsec"><h4 className="fsh c1">Commande</h4><dl className="kv"><dt>N° commande</dt><dd>{o.numero}</dd><dt>Client</dt><dd>{o.client}</dd><dt>Date de commande</dt><dd>{fmtD(new Date(o.dateCommande+'T12:00'))}</dd><dt>Livraison</dt><dd>{fmtD(dateLivraison(o,P))}{o.enlevement?' · enlèvement sur site':''}</dd></dl></section>
+          <section className="fsec"><h4 className="fsh c2">Caractéristiques</h4><dl className="kv"><dt>Format</dt><dd>{o.largeur} × {o.hauteur} mm</dd><dt>Quantité</dt><dd>{o.quantite} ex.</dd><dt>Pages</dt><dd>{o.pages}</dd>
+            <dt>Intérieur</dt><dd>{o.papierInt} · {o.couleur==='NB'?'N/B':'Couleur'}</dd>{o.papierInt2&&<><dt>Papier secondaire</dt><dd>{o.papierInt2}</dd><dt>Pages concernées</dt><dd>{o.pagesInt2||<span className="muted">non renseignées</span>}</dd></>}
+            <dt>Couverture</dt><dd>{o.papierCouv} · pelliculage {o.pelliculage||'non'}</dd></dl></section>
+        </div>
+        <section className="fsec"><h4 className="fsh c4">Opérations et données techniques</h4>
+        <div className="tblwrap"><table className="optbl compact"><thead><tr><th>Opération</th><th className="n">Durée prévue</th><th>Faite le</th><th>Données techniques</th></tr></thead><tbody>
+          {buildOps(o,P).map(op=>{const e=(o.etat||{})[op.code]||{};return <tr key={op.code}><td><span className="opname"><Picto m={op.machine} size={18}/>{op.label}</span><span className="opmach">{MACHINES.find(m=>m.id===op.machine).nom}</span></td><td className="n">{hhmm(op.op)}{op.machine==='presse'?' + machine '+hhmm(op.mach):''}</td><td>{(e.doneAt||e.fixD)?fmtDH(new Date(e.doneAt||e.fixD)):''}</td><td className={'pre'+(e.note?' hasnote':'')}>{e.note||<span className="muted">—</span>}</td></tr>;})}
+        </tbody></table></div></section>
+        <div className="row">{conf?<><span>Supprimer définitivement cet OF de l'historique ?</span><button className="btn btn-danger" onClick={()=>{onDel(o.id);setSel(null);setConf(false);}}>Supprimer</button><button className="btn" onClick={()=>setConf(false)}>Annuler</button></>:<button className="btn sm" onClick={()=>setConf(true)}>Supprimer de l'historique</button>}</div>
+      </>}
+    </div></div></div>;
+}
+const Fld=({l,children})=><div className="fld"><span className="lbl">{l}</span>{children}</div>;
+function ImportReview({imp,onOk,onClose}){
+  const[sel,setSel]=useState(imp.drafts.map(d=>!d._dup));
+  return <div className="overlay"><div className="modal small" role="dialog" aria-label="Import">
+    <div className="mhead"><div><span className="eyebrow">Import PDF</span><h3>{imp.drafts.length} OF détecté(s)</h3></div><button className="ib x" onClick={onClose} aria-label="Fermer">✕</button></div>
+    <div className="mbody">
+      {imp.errs.length>0&&<p className="warn">Aucun livre reconnu dans : {imp.errs.join(', ')}. Pour un travail hors livre, crée l'OF à la main.</p>}
+      <div className="tblwrap"><table><thead><tr><th/><th>Source</th><th>N°</th><th>Client</th><th>Titre</th><th>Format</th><th className="n">Qté</th><th className="n">Pages</th><th>Intérieur</th><th>Pellic.</th><th>Ex.</th></tr></thead>
+      <tbody>{imp.drafts.map((d,i)=><tr key={i}><td><input id={'imp'+i} type="checkbox" checked={sel[i]} onChange={e=>setSel(s=>s.map((v,j)=>j===i?e.target.checked:v))}/></td>
+        <td>{d.source}</td><td>{d.numero}{d._dup&&<span className="tag">déjà présent</span>}</td><td>{d.client}</td><td>{d.titre}</td><td>{d.largeur}×{d.hauteur}</td><td className="n">{d.quantite}</td><td className="n">{d.pages}</td>
+        <td>{d.couleur==='NB'?'N/B':'Couleur'} · {d.papierInt}</td><td>{d.pelliculage}</td><td>{d.exemplaire?'Oui':'Non'}</td></tr>)}</tbody></table></div>
+      <p className="note">Les OF importés arrivent hachurés : coche « Fichiers OK » quand les fichiers du client sont validés.</p>
+    </div>
+    <div className="mfoot"><button className="btn" onClick={onClose}>Annuler</button><button className="btn btn-primary" onClick={()=>onOk(sel)} disabled={!sel.some(Boolean)}>Créer les OF</button></div>
+  </div></div>;
+}
+function Modeles({modeles,setModeles}){
+  const upd=(id,fn)=>setModeles(l=>l.map(m=>m.id===id?fn(m):m));
+  const updOp=(id,i,k,v)=>upd(id,m=>({...m,ops:m.ops.map((o,j)=>j===i?{...o,[k]:v}:o)}));
+  const mv=(id,i,d)=>upd(id,m=>{const n=[...m.ops];const j=i+d;if(j<0||j>=n.length)return m;[n[i],n[j]]=[n[j],n[i]];return{...m,ops:n};});
+  const[conf,setConf]=useState(null);
+  return <div className="mods">
+    <p className="note">Ces modèles apparaissent dans l'onglet « Opérations » d'un OF hors livre. Les opérations s'enchaînent dans l'ordre affiché ; les durées sont en minutes.</p>
+    {modeles.map(m=><section key={m.id} className="fsec">
+      <div className="fshrow"><input id={'mn-'+m.id} className="inp mname" value={m.nom} onChange={e=>upd(m.id,x=>({...x,nom:e.target.value}))} aria-label="Nom du modèle"/>
+        {conf===m.id?<span className="row0"><button className="btn sm btn-danger" onClick={()=>{setModeles(l=>l.filter(x=>x.id!==m.id));setConf(null);}}>Confirmer la suppression</button><button className="btn sm" onClick={()=>setConf(null)}>Annuler</button></span>:<button className="btn sm" onClick={()=>setConf(m.id)}>Supprimer le modèle</button>}</div>
+      <table className="optbl compact"><thead><tr><th>#</th><th>Opération</th><th>Machine</th><th className="n">Durée (min)</th><th/></tr></thead><tbody>
+        {m.ops.map((o,i)=><tr key={i}><td><span className="mnum">{i+1}<Picto m={o.machine} size={18}/></span></td><td><input id={'mo-'+m.id+i} className="inp" value={o.label} onChange={e=>updOp(m.id,i,'label',e.target.value)}/></td>
+          <td><select id={'mm-'+m.id+i} className="inp" value={o.machine} onChange={e=>updOp(m.id,i,'machine',e.target.value)}>{MACHINES.map(x=><option key={x.id} value={x.id}>{x.nom}</option>)}</select></td>
+          <td><input id={'md-'+m.id+i} className="inp n" type="number" min="1" value={o.op} onChange={e=>updOp(m.id,i,'op',+e.target.value)}/></td>
+          <td className="opact"><button className="ib" aria-label="Monter" onClick={()=>mv(m.id,i,-1)}>▲</button><button className="ib" aria-label="Descendre" onClick={()=>mv(m.id,i,1)}>▼</button><button className="ib" aria-label="Retirer" onClick={()=>upd(m.id,x=>({...x,ops:x.ops.filter((_,j)=>j!==i)}))}>✕</button></td></tr>)}
+      </tbody></table>
+      <button className="btn sm" onClick={()=>upd(m.id,x=>({...x,ops:[...x.ops,{label:'Opération',machine:'massicot',op:10}]}))}>+ Ajouter une opération</button>
+    </section>)}
+    <button className="btn btn-dark" onClick={()=>setModeles(l=>[...l,{id:'m'+uid(),nom:'Nouveau modèle',ops:[{label:'Impression',machine:'presse',op:5},{label:'Massicot',machine:'massicot',op:10},{label:'Emballage',machine:'emballeuse',op:10}]}])}>+ Nouveau modèle</button>
+  </div>;
+}
+function Settings({onRestore,modeles,setModeles,tab,setTab,papiers,setPapiers,clients,setClients,params,setParams,onReset}){
+  const[np,setNp]=useState('');
+  const P=params; const setP=(path,v)=>{const p=JSON.parse(JSON.stringify(P));const ks=path.split('.');let o=p;ks.slice(0,-1).forEach(k=>o=o[k]);o[ks[ks.length-1]]=+v;setParams(p);};
+  const rowsT=[['Presse intérieur : lancement (min)','presseInt.lancement'],['Presse intérieur : vitesse (faces SRA3 / min)','presseInt.ppm'],['Presse couverture : lancement (min)','presseCouv.lancement'],['Presse couverture : vitesse (faces SRA3 / min)','presseCouv.ppm'],
+    ['Massicot intérieur : calage (min)','masInt.a'],['Massicot intérieur : par livre (min)','masInt.b'],['Massicot couverture : calage','masCouv.a'],['Massicot couverture : par livre','masCouv.b'],['Massicot final : calage','masFin.a'],['Massicot final : par livre','masFin.b'],
+    ['Rainage : calage','rai.a'],['Rainage : par livre','rai.b'],['Pelliculage : calage','pel.a'],['Pelliculage : par livre','pel.b'],['Collage : calage','col.a'],['Collage : par livre','col.b'],['Emballage : calage','emb.a'],['Emballage : par livre','emb.b'],
+    ['Séchage (h)','sechageH'],['Transport (jours ouvrés)','transportJO'],['Série placée après le BAT (jours ouvrés)','attenteBAT'],['Délai client par défaut (jours)','delaiJ']];
+  const get=path=>path.split('.').reduce((o,k)=>o[k],P);
+  return <div className="overlay" onClick={()=>setTab(null)}><div className="modal" onClick={e=>e.stopPropagation()} role="dialog" aria-label="Listes et réglages">
+    <div className="mhead"><div className="seg">{[['papiers','Papiers'],['clients','Clients'],['modeles','Modèles hors livre'],['temps','Temps standards'],...(window.SB_CONF?[['sauv','Sauvegardes']]:[])].map(([v,l])=><button key={v} className={tab===v?'on':''} onClick={()=>setTab(v)}>{l}</button>)}</div><button className="ib x" onClick={()=>setTab(null)} aria-label="Fermer">✕</button></div>
+    <div className="mbody">
+      {tab==='modeles'&&<Modeles modeles={modeles} setModeles={setModeles}/>}
+      {tab==='sauv'&&<Sauvegardes onRestore={onRestore}/>}
+      {(tab==='papiers'||tab==='clients')&&<><div className="addrow"><input id="set-add" className="inp" value={np} onChange={e=>setNp(e.target.value)} placeholder={tab==='papiers'?'Nouveau papier':'Nouveau client'}/><button className="btn btn-primary" onClick={()=>{if(!np.trim())return;tab==='papiers'?setPapiers(l=>[...l,np.trim()]):setClients(l=>[...l,np.trim()]);setNp('');}}>Ajouter</button></div>
+        <ul className="plist">{(tab==='papiers'?papiers:clients).map(p=><li key={p}>{p}<button className="ib" aria-label="Retirer" onClick={()=>tab==='papiers'?setPapiers(l=>l.filter(x=>x!==p)):setClients(l=>l.filter(x=>x!==p))}>✕</button></li>)}</ul></>}
+      {tab==='temps'&&<><p className="note">Valeurs tirées de l'historique (≈ 210 livres dos carré collé, 2024-2026) : temps = calage + quantité × temps par livre. Elles pré-remplissent chaque OF, qui reste modifiable.</p>
+        <div className="g2">{rowsT.map(([l,k])=><Fld key={k} l={l}><input id={'p-'+k} className="inp n" type="number" step="0.001" value={get(k)} onChange={e=>setP(k,e.target.value)}/></Fld>)}</div>
+        <div className="row"><button className="btn" onClick={()=>setParams({...DEFAULT_PARAMS})}>Revenir aux valeurs d'origine</button><button className="btn btn-danger" onClick={onReset}>Recharger les OF d'exemple</button></div></>}
+    </div></div></div>;
+}
+/* ===== MODE EN LIGNE (Supabase) : actif seulement si window.SB_CONF est défini ===== */
+function sbFetch(path,opts={}){const c=window.SB_CONF;return fetch(c.url+'/rest/v1/'+path,{...opts,headers:{apikey:c.key,'Content-Type':'application/json',...(opts.headers||{})}}).then(async r=>{if(!r.ok)throw new Error((await r.text())||('Erreur '+r.status));const t=await r.text();return t?JSON.parse(t):null;});}
+const REG_KEYS=['papiers','clients','params','modeles'];
+function useSync({ofs,setOfs,reg,setReg}){
+  const on=!!window.SB_CONF;const[st,setSt]=useState({etat:'ok',msg:''});
+  const last=useRef(null),lastReg=useRef(null),timer=useRef(null),busy=useRef(false),seen=useRef('');
+  if(on&&last.current===null){last.current={};(window.__BOOT.ofs||[]).forEach((o,i)=>last.current[o.id]=JSON.stringify([o,i]));lastReg.current={};REG_KEYS.forEach(k=>lastReg.current[k]=JSON.stringify(window.__BOOT[k]));seen.current=window.__BOOT.stamp||'';}
+  const flush=async()=>{if(busy.current){timer.current=setTimeout(flush,400);return;}busy.current=true;setSt({etat:'busy',msg:''});
+    try{const cur=window.__CUR;const up=[],ids=new Set();
+      cur.ofs.forEach((o,i)=>{ids.add(o.id);const j=JSON.stringify([o,i]);if(last.current[o.id]!==j)up.push({id:o.id,data:o,position:i});});
+      const del=Object.keys(last.current).filter(id=>!ids.has(id));
+      if(up.length)await sbFetch('lvsl_of',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(up.map(r=>({...r,updated_at:new Date().toISOString()})))});
+      if(del.length)await sbFetch('lvsl_of?id=in.('+del.map(encodeURIComponent).join(',')+')',{method:'DELETE'});
+      const rup=REG_KEYS.filter(k=>lastReg.current[k]!==JSON.stringify(cur.reg[k])).map(k=>({cle:k,valeur:cur.reg[k],updated_at:new Date().toISOString()}));
+      if(rup.length)await sbFetch('lvsl_reglages',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(rup)});
+      up.forEach(r=>last.current[r.id]=JSON.stringify([r.data,r.position]));del.forEach(id=>delete last.current[id]);rup.forEach(r=>lastReg.current[r.cle]=JSON.stringify(r.valeur));
+      seen.current=new Date().toISOString();setSt({etat:'ok',msg:''});}
+    catch(e){setSt({etat:'err',msg:'modifications non enregistrées, nouvel essai…'});timer.current=setTimeout(flush,5000);}
+    finally{busy.current=false;}};
+  useEffect(()=>{if(!on)return;window.__CUR={ofs,reg};clearTimeout(timer.current);timer.current=setTimeout(flush,700);},[ofs,reg.papiers,reg.clients,reg.params,reg.modeles]);
+  // lecture des modifications faites depuis un autre poste
+  useEffect(()=>{if(!on)return;const poll=async()=>{if(busy.current||document.hidden)return;
+      const dirty=window.__CUR&&(window.__CUR.ofs.some((o,i)=>last.current[o.id]!==JSON.stringify([o,i]))||Object.keys(last.current).length!==window.__CUR.ofs.length);if(dirty)return;
+      try{const a=await sbFetch('lvsl_of?select=updated_at&order=updated_at.desc&limit=1'),b=await sbFetch('lvsl_reglages?select=updated_at&order=updated_at.desc&limit=1'),n=await sbFetch('lvsl_of?select=id');
+        const stamp=[(a[0]||{}).updated_at,(b[0]||{}).updated_at].filter(Boolean).sort().pop()||'';
+        if(stamp>seen.current||n.length!==Object.keys(last.current).length){const d=await loadAll();
+          last.current={};d.ofs.forEach((o,i)=>last.current[o.id]=JSON.stringify([o,i]));REG_KEYS.forEach(k=>{if(d[k]!=null){lastReg.current[k]=JSON.stringify(d[k]);setReg[k](d[k]);}});
+          window.__CUR={...window.__CUR,ofs:d.ofs};setOfs(d.ofs);seen.current=d.stamp;}
+        setSt(s=>s.etat==='err'?s:{etat:'ok',msg:''});}catch(e){setSt({etat:'err',msg:'connexion perdue'});}};
+    const t=setInterval(poll,15000);window.addEventListener('focus',poll);return()=>{clearInterval(t);window.removeEventListener('focus',poll);};},[]);
+  return st;
+}
+async function loadAll(){const rows=await sbFetch('lvsl_of?select=*&order=position');const regs=await sbFetch('lvsl_reglages?select=*');
+  const d={ofs:rows.map(r=>r.data),stamp:[...rows.map(r=>r.updated_at),...regs.map(r=>r.updated_at)].filter(Boolean).sort().pop()||''};regs.forEach(r=>d[r.cle]=r.valeur);return d;}
+function Sauvegardes({onRestore}){
+  const[l,setL]=useState(null);const[conf,setConf]=useState(null);const[err,setErr]=useState('');
+  useEffect(()=>{sbFetch('lvsl_sauvegardes?select=id,jour,created_at&order=jour.desc&limit=30').then(setL).catch(()=>setErr('Impossible de lire les sauvegardes.'));},[]);
+  return <div><p className="note">Une sauvegarde complète (OF, historique, listes et réglages) est faite automatiquement chaque jour à la première ouverture du planning. Les 30 dernières sont listées ici.</p>
+    {err&&<p className="warn">{err}</p>}{!l&&!err&&<p className="note">Chargement…</p>}
+    {l&&<ul className="plist">{l.map(b=><li key={b.id}><span><b>{new Date(b.jour+'T12:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}</b> · {new Date(b.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</span>
+      {conf===b.id?<span className="row0"><button className="btn sm btn-danger" onClick={async()=>{try{const r=await sbFetch('lvsl_sauvegardes?id=eq.'+b.id+'&select=contenu');onRestore(r[0].contenu);}catch(e){setErr('La restauration a échoué.');}}}>Remplacer le planning actuel</button><button className="btn sm" onClick={()=>setConf(null)}>Annuler</button></span>:<button className="btn sm" onClick={()=>setConf(b.id)}>Restaurer</button>}</li>)}</ul>}</div>;
+}
+function Gate(){
+  const[ok,setOk]=useState(()=>{try{return localStorage.getItem('lvsl-acces')===window.SB_CONF.hash;}catch(e){return false;}});
+  const[pw,setPw]=useState('');const[err,setErr]=useState('');const[boot,setBoot]=useState(null);const[loadErr,setLoadErr]=useState('');
+  const sha=async t=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t)))).map(b=>b.toString(16).padStart(2,'0')).join('');
+  const start=async()=>{setLoadErr('');try{let d=await loadAll();
+      if(!d.ofs.length&&!d.papiers){const P={...DEFAULT_PARAMS};const ex=ensureBats(exemple(),P);
+        await sbFetch('lvsl_of',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(ex.map((o,i)=>({id:o.id,data:o,position:i})))});
+        const reg={papiers:PAPIERS_CSV,clients:[],params:P,modeles:[{id:'mbro',nom:'Brochure agrafée',ops:MAN_PRESETS.brochure},{id:'mfly',nom:'Flyers / affiches',ops:MAN_PRESETS.flyers}]};
+        await sbFetch('lvsl_reglages',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(REG_KEYS.map(k=>({cle:k,valeur:reg[k]})))});d=await loadAll();}
+      const jour=todayIso();try{const s=await sbFetch('lvsl_sauvegardes?jour=eq.'+jour+'&select=id');if(!s.length)await sbFetch('lvsl_sauvegardes',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({jour,contenu:{ofs:d.ofs,reglages:{papiers:d.papiers,clients:d.clients,params:d.params,modeles:d.modeles}}})});}catch(e){}
+      window.__BOOT=d;setBoot(d);}catch(e){setLoadErr(String(e.message||e).slice(0,200));}};
+  useEffect(()=>{if(ok)start();},[ok]);
+  if(!ok)return <div className="gate"><form className="gbox" onSubmit={async e=>{e.preventDefault();const h=await sha(pw);if(h===window.SB_CONF.hash){try{localStorage.setItem('lvsl-acces',h);}catch(x){}setOk(true);}else setErr('Mot de passe incorrect.');}}>
+    <span className="eyebrow">Le Vent Se Lève · atelier</span><h1>Planning impression</h1>
+    <label className="lbl" htmlFor="g-pw">Mot de passe</label><input id="g-pw" className="inp" type="password" autoFocus value={pw} onChange={e=>{setPw(e.target.value);setErr('');}}/>
+    {err&&<p className="warn">{err}</p>}<button className="btn btn-primary" type="submit">Entrer</button></form></div>;
+  if(loadErr)return <div className="gate"><div className="gbox"><h1>Connexion impossible</h1><p className="warn">La base de données ne répond pas : {loadErr}</p><button className="btn btn-primary" onClick={start}>Réessayer</button></div></div>;
+  if(!boot)return <div className="gate"><div className="gbox"><p>Chargement du planning…</p></div></div>;
+  return <App/>;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(window.SB_CONF?<Gate/>:<App/>);
+</script></body></html>
