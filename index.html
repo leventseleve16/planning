@@ -592,7 +592,7 @@ function Gantt({scrollTick,onFocus,todayTick,focus,ofs,sched,cal,zoom,now,onSel,
   const maxW=Math.max(WD*10,...sched.tasks.map(t=>t.e),...sched.waits.map(w=>w.e));
   const nDays=Math.ceil((maxW+WD*3)/WD/5)*5; const W=nDays*WD*ppm;
   const nowW=cal.date2w(now);
-  useEffect(()=>{const el=scRef.current;if(!el)return;const vis=el.clientWidth-LABW;el.scrollTo({left:Math.max(0,cal.date2w(new Date())*ppm-vis*0.2),behavior:todayTick?'smooth':'auto'});},[zoom,todayTick,vw>0]);
+  useEffect(()=>{const el=scRef.current;if(!el)return;const vis=el.clientWidth-LABW;el.scrollTo({left:Math.max(0,cal.date2w(new Date())*ppm-vis*0.2),behavior:todayTick?'smooth':'auto'});},[zoom,todayTick,Math.round(vw/50)]);
   useEffect(()=>{if(!focus||!scRef.current)return;const ts=sched.tasks.filter(t=>t.ofId===focus);if(!ts.length)return;const s0=Math.min(...ts.map(t=>t.s));scRef.current.scrollTo({left:Math.max(0,s0*ppm-120),behavior:'smooth'});},[scrollTick]);
   const fc=id=>focus&&id===focus?' foc':'';
   const ofById=Object.fromEntries(ofs.map(o=>[o.id,o]));
