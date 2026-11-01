@@ -421,7 +421,7 @@ function parseDocument(text,papiers,todayIso){
       const coul=(/Couleur\s*:\s*\n?\s*([A-Za-zéè\/ &]+?)\s*(?:-|\))/i.exec(b)||[])[1]||'';
       const fin=(/Finition\s*:\s*([^)]+)\)/i.exec(b)||[])[1]||'';
       out.push({source:'JIML',numero:fa+(m[2]?' / '+m[2]:''),client,
-        titre:((/Nom\s*:\s*([^\n]+)/.exec(b)||[])[1]||'').trim(),
+        titre:((/Nom[ \t]*:[ \t]*([^\n]*)/.exec(b)||[])[1]||'').trim()||client, /* « Nom » vide : on prend le nom du client */
         largeur:f[1]?Math.round(num(f[1])*10):'',hauteur:f[2]?Math.round(num(f[2])*10):'',
         papierInt:matchPapier(pap.replace(/\\n|\n/g,' '),papiers),papierCouv:papiers.find(p=>/^Invercote 300/.test(p))||'Invercote 300 g',
         couleur:/noir|n\s*\/\s*b/i.test(coul)?'NB':'Couleur',
@@ -434,16 +434,19 @@ function parseDocument(text,papiers,todayIso){
   } else if(/LE VENT SE LEVE/i.test(text)&&/Devis|Facture/i.test(text)){ // ---- Devis / facture LVSL
     const no=(/N°\s*:\s*((?:DE|FA)\d+)/.exec(text)||[])[1]||'';
     const client=((/(?:valable jusqu'au|Date d'échéance)[^\n]*\n\s*([^\n]+)/.exec(text)||[])[1]||'').trim();
+    const ref=((/R[ée]f\.\s*:\s*([^\n]+)/.exec(text)||[])[1]||'').trim();
+    const bat=/r[ée]alisation d'un BAT|\bBAT\b|exemplaire avant (l'|l’)?impression/i.test(text); /* ligne BAT ou exemplaire avant impression */
     const re=/([^\n]+)\n\s*(\d+)\s*pages\s*\n\s*Format fini\s*:\s*([\d,]+)\s*[×x]\s*([\d,]+)\s*mm\s*\n\s*Intérieur\s*:\s*([^\n]+)\n\s*Couverture\s*:\s*([\s\S]+?)\n\s*(Dos carré collé|[^\n]*agraf[^\n]*)?\s*\n?\s*([\d,]+)\s+u\b/g;
     let x; while((x=re.exec(text))){
       const inter=x[5], couv=x[6].replace(/\n/g,' ');
       const papI=inter.split(',').slice(-1)[0].trim(), papC=(couv.split(',').find(s=>/\d+\s*g/.test(s))||'').trim();
-      out.push({source:'LVSL',numero:no,client,titre:x[1].trim(),
+      let titre=x[1].trim();if(/^(impression|fa[çc]onnage|livre)\b|:\s*$/i.test(titre))titre=ref.replace(/^R[ée]impressions?\s*:\s*/i,'')||titre.replace(/:\s*$/,''); /* libellé générique : on prend la référence du devis */
+      out.push({source:'LVSL',numero:no,client,titre,
         largeur:num(x[3]),hauteur:num(x[4]),pages:+x[2],quantite:Math.round(num(x[8])),
         papierInt:matchPapier(papI,papiers),papierCouv:matchPapier(papC,papiers),
         couleur:/noir/i.test(inter)?'NB':'Couleur',
         pelliculage:/pelliculage\s+brillant/i.test(couv)?'brillant':/pelliculage\s+mat/i.test(couv)?'mat':'non',
-        exemplaire:false,dateCommande:todayIso,type:/agraf/i.test(x[7]||'')?'autre':'livre'});
+        exemplaire:bat,dateCommande:todayIso,type:/agraf/i.test(x[7]||'')?'autre':'livre'});
     }
   }
   return out;
