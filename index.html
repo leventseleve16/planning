@@ -267,6 +267,11 @@ textarea.inp.note{display:block;margin:0}
 .impwrap{overflow-x:scroll;padding-bottom:6px}.imptbl{min-width:1150px}.imptbl td{white-space:nowrap}
 .synbtn{font-weight:700;text-decoration:underline;color:inherit;padding:0 4px}
 .attn{display:block;font-size:10.5px;font-weight:600;opacity:.75}
+.syndet{display:block;font:400 10.5px var(--f-mono);color:var(--bad);max-width:620px;white-space:normal;word-break:break-word}
+tr.ofrow.hatchrow td{background-image:repeating-linear-gradient(135deg,transparent 0 7px,rgba(0,0,0,.13) 7px 10px)}
+.splitter{flex:none;height:10px;cursor:row-resize;display:flex;align-items:center;justify-content:center;background:var(--surface);border-top:1px solid var(--line);border-bottom:1px solid var(--line);touch-action:none}
+.splitter i{width:60px;height:4px;border-radius:2px;background:var(--inpbd)}.splitter:hover i,.splitter:focus-visible i{background:var(--accent)}
+.oflist{flex:1 1 0;min-height:120px}
 </style>
 </head><body>
 <script>window.SB_CONF={url:'https://elgzabndydvidkwitgbp.supabase.co',key:'sb_publishable_kTq6l0FOYWmTx5AZywoDHg_BZh8LSep',hash:'613cc1600f1da8046e65db6ac7d64bc711470e8b3b0f0a74e5a8298f2bc00053'};</script>
@@ -516,14 +521,14 @@ function ensureBats(list,P){
     if(o.batDe){if(o.archive||!l.some(p=>p.id===o.batDe&&!p.archive))out.push(o);return;}
     if(o.exemplaire){
       const old=l.find(x=>x.batDe===o.id);
-      if(old){out.push(old);}
+      if(old){if(!old.archive)out.push(old);} /* BAT archivé : déjà repris tel quel, ne pas le dupliquer ni en recréer un */
       else{
         const b={id:uid(),etat:{},surcharges:{},fichiersOk:false,batDe:o.id,exemplaire:false,quantite:1,titre:o.titre+' · exemplaire BAT',enlevement:false};
         SPEC.forEach(k=>b[k]=o[k]);b.papierInt2=o.papierInt2;b.pagesInt2=o.pagesInt2;out.push(b);}
     }
     out.push(o);
   });
-  return stampBat(out);
+  const vus=new Set();return stampBat(out.filter(o=>{if(vus.has(o.id))return false;vus.add(o.id);return true;}));
 }
 function stampBat(list){return list.map(o=>{if(!o.exemplaire||o.batDe)return o;if(o.fichiersOk&&!o.batValideLe)return{...o,batValideLe:todayIso()};if(!o.fichiersOk&&o.batValideLe){const{batValideLe,...r}=o;return r;}return o;});}
 function useNow(){const[n,setN]=useState(new Date());useEffect(()=>{const t=setInterval(()=>setN(new Date()),60000);return()=>clearInterval(t);},[]);return n;}
@@ -556,7 +561,9 @@ function App(){
   const upd=(id,fn)=>setOfs(l=>ensureBats(l.map(o=>o.id===id?fn(o):o),params));
   const setEtat=(id,code,patch)=>upd(id,o=>{const e={...(o.etat||{})};const cur={...(e[code]||{}),...patch};Object.keys(cur).forEach(k=>cur[k]==null&&delete cur[k]);e[code]=cur;return{...o,etat:e};});
   const toggleDone=t=>{if(t.done)setEtat(t.ofId,t.code,{done:null,fixD:null,doneAt:null});else setEtat(t.ofId,t.code,{done:true,fixD:fixAt(t),doneAt:new Date().toISOString()});};
-  const[todayTick,setTodayTick]=useState(0);const[daily,setDaily]=useState(false);
+  const[todayTick,setTodayTick]=useState(0);
+  const[gh,setGhS]=useState(()=>{try{const v=localStorage.getItem('lvsl-gh');return v?+v:null;}catch(e){return null;}});
+  const setGh=v=>{setGhS(v);try{v==null?localStorage.removeItem('lvsl-gh'):localStorage.setItem('lvsl-gh',String(Math.round(v)));}catch(e){}};const[daily,setDaily]=useState(false);
   const fixAt=t=>{const nowW=cal.date2w(new Date());const day0=Math.floor(nowW/WD)*WD;const s=t.s>nowW?Math.max(day0,nowW-(t.e-t.s)):t.s;return cal.w2date(s).toISOString();};
   const saveOf=of0=>{const{_focusOp,...of}=of0;
     setOfs(l=>{let nl;if(l.some(o=>o.id===of.id))nl=l.map(o=>o.id===of.id?of:o);
@@ -575,7 +582,7 @@ function App(){
   const confirmImport=sel=>{const add=imp.drafts.filter((d,i)=>sel[i]);add.forEach(d=>{const{_file,_dup,...o}=d;saveOf({id:uid(),delai:params.delaiJ,etat:{},fichiersOk:false,...o});});setImp(null);setToast(add.length+' OF créé(s), hachurés tant que les fichiers ne sont pas validés');};
   return <div className="app">
     <header className="top">
-      <div className="brand"><span className="eyebrow">Le Vent Se Lève · atelier</span><h1>Planning impression</h1>{window.SB_CONF&&<span className={'sync '+sync.etat} title={sync.detail||sync.msg}>{sync.etat==='ok'?'● Enregistré':sync.etat==='busy'?'● Enregistrement…':<>● {sync.msg} <button className="ib synbtn" onClick={sync.retry}>Réessayer</button></>}</span>}</div>
+      <div className="brand"><span className="eyebrow">Le Vent Se Lève · atelier</span><h1>Planning impression</h1>{window.SB_CONF&&<span className={'sync '+sync.etat} title={sync.detail||sync.msg}>{sync.etat==='ok'?'● Enregistré':sync.etat==='busy'?'● Enregistrement…':<>● {sync.msg} <button className="ib synbtn" onClick={sync.retry}>Réessayer</button>{sync.detail&&<small className="syndet">Détail : {sync.detail}</small>}</>}</span>}</div>
       <div className="actions">
         <label className="btn btn-primary file"><i className="ic">⇪</i>Importer facture / devis<input id="pdfin" type="file" accept="application/pdf" multiple onChange={e=>{onFiles([...e.target.files]);e.target.value='';}}/></label>
         <button className="btn" onClick={()=>setTodayTick(x=>x+1)}><i className="ic">◉</i>Aujourd'hui</button>
@@ -586,7 +593,10 @@ function App(){
         <div className="menuwrap"><button className="btn" onClick={()=>setMenu(menu?null:'papiers')}>☰ Listes & réglages</button></div>
       </div>
     </header>
-    <Gantt focus={focus} ofs={actifs} sched={sched} cal={cal} zoom={zoom} now={now} scrollTick={scrollTick} onFocus={setFocus} onSel={t=>{setFocus(t.ofId);setEdit({...ofs.find(o=>o.id===t.ofId),_focusOp:t.code});}} todayTick={todayTick} onPin={(t,w)=>setEtat(t.ofId,t.code,{nbD:cal.w2date(w).toISOString()})}/>
+    <Gantt height={gh} focus={focus} ofs={actifs} sched={sched} cal={cal} zoom={zoom} now={now} scrollTick={scrollTick} onFocus={setFocus} onSel={t=>{setFocus(t.ofId);setEdit({...ofs.find(o=>o.id===t.ofId),_focusOp:t.code});}} todayTick={todayTick} onPin={(t,w)=>setEtat(t.ofId,t.code,{nbD:cal.w2date(w).toISOString()})}/>
+    <div className="splitter" role="separator" aria-orientation="horizontal" aria-label="Glisser pour agrandir le planning ou la liste des OF" tabIndex={0}
+      onPointerDown={e=>{e.preventDefault();const y0=e.clientY,h0=document.querySelector('.gantt').offsetHeight;const mv=ev=>setGh(Math.max(180,Math.min(window.innerHeight-200,h0+ev.clientY-y0)));const up=()=>{window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);};window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);}}
+      onDoubleClick={()=>setGh(null)} onKeyDown={e=>{if(e.key==='ArrowUp'||e.key==='ArrowDown'){e.preventDefault();const h0=document.querySelector('.gantt').offsetHeight;setGh(Math.max(180,Math.min(window.innerHeight-200,h0+(e.key==='ArrowUp'?-30:30))));}}}><i/></div>
     <OfList focus={focus} onFocus={id=>{setFocus(id);if(id)setScrollTick(x=>x+1);}} ofs={actifs} sched={sched} params={params} onEdit={setEdit} onMove={move} upd={upd} onDel={id=>{setOfs(l=>l.filter(o=>o.id!==id&&o.batDe!==id));if(focus===id)setFocus(null);}}/>
     {edit&&<OfForm modeles={modeles} of={edit} cal={cal} fixAt={fixAt} tasks={sched.tasks.filter(t=>t.ofId===edit.id)} params={params} papiers={papiers} clients={allClients} onAddPapier={p=>setPapiers(l=>[...l,p])} onSave={saveOf} onClose={()=>setEdit(null)}/>}
     {menu&&<Settings onRestore={c=>{setOfs(ensureBats(c.ofs||[],params));if(c.reglages){const r=c.reglages;r.papiers&&setPapiers(r.papiers);r.clients&&setClients(r.clients);r.params&&setParams({...DEFAULT_PARAMS,...r.params});r.modeles&&setModeles(r.modeles);}setMenu(null);setToast('Sauvegarde restaurée');}} modeles={modeles} setModeles={setModeles} tab={menu} setTab={setMenu} papiers={papiers} setPapiers={setPapiers} clients={allClients} setClients={setClients} params={params} setParams={setParams} onReset={()=>{setOfs(ensureBats(exemple(),params));setMenu(null);setToast('Exemple rechargé');}}/>}
@@ -602,7 +612,7 @@ async function pdfText(file){
   for(let i=1;i<=pdf.numPages;i++){const c=await(await pdf.getPage(i)).getTextContent();t+=c.items.map(x=>x.str+(x.hasEOL?'\n':' ')).join('')+'\n';}
   return t;
 }
-function Gantt({scrollTick,onFocus,todayTick,focus,ofs,sched,cal,zoom,now,onSel,onPin}){
+function Gantt({height,scrollTick,onFocus,todayTick,focus,ofs,sched,cal,zoom,now,onSel,onPin}){
   const scRef=useRef(null), [drag,setDrag]=useState(null), [vw,setVw]=useState(1200);
   useEffect(()=>{const el=scRef.current;if(!el)return;const ro=new ResizeObserver(()=>setVw(el.clientWidth));ro.observe(el);setVw(el.clientWidth);return()=>ro.disconnect();},[]);
   const ppm=Math.max(0.05,(vw-LABW)/(zoom*WD));
@@ -618,7 +628,7 @@ function Gantt({scrollTick,onFocus,todayTick,focus,ofs,sched,cal,zoom,now,onSel,
   const down=(e,t)=>{e.currentTarget.setPointerCapture(e.pointerId);setDrag({t,x0:e.clientX,dx:0});};
   const mv=e=>{if(drag&&!drag.t.done)setDrag({...drag,dx:e.clientX-drag.x0});};
   const up=(e,t)=>{if(!drag){return;}const d=drag;setDrag(null);if(Math.abs(d.dx)<5){onFocus(t.ofId);return;}onPin(t,Math.max(nowW,Math.round(t.s+d.dx/ppm)));};
-  return <section className="gantt" aria-label="Planning machines">
+  return <section className="gantt" style={height?{flex:'none',height}:undefined} aria-label="Planning machines">
     <div className="gscroll" ref={scRef} onClick={e=>{if(!e.target.closest('.bar,.wait'))onFocus(null);}}>
       <div className="ginner" style={{width:W+LABW}}>
         <div className="ghead">
@@ -673,7 +683,7 @@ function OfList({focus,onFocus,ofs,sched,params,onEdit,onMove,upd,onDel}){
     <div className="tblwrap"><table>
       <thead><tr><th>Prio</th><th>N° commande</th><th>Client</th><th>Titre</th><th className="n">Qté</th><th className="n">Pages</th><th>Fichiers</th><th>Exemplaire</th><th>Avancement</th><th>Fin prévue</th><th>Expé. au plus tard</th><th>Livraison</th><th/></tr></thead>
       <tbody>{ofs.map((o,i)=>{const s=sched.ofs[o.id];const[bg,fg]=OF_COLORS[o.couleurIdx||0];if(!s)return null;
-        return <tr key={o.id} className={'ofrow'+(s.retard?' rlate':'')+(focus===o.id?' sel':'')} style={{'--bg':bg,'--fg':fg}} onClick={e=>{if(e.target.closest('button'))return;onFocus(o.id);}} onDoubleClick={e=>{if(e.target.closest('button'))return;onEdit(o);}} title="1 clic : voir les étapes · double-clic : ouvrir l'OF">
+        return <tr key={o.id} className={'ofrow'+(!o.fichiersOk?' hatchrow':'')+(s.retard?' rlate':'')+(focus===o.id?' sel':'')} style={{'--bg':bg,'--fg':fg}} onClick={e=>{if(e.target.closest('button'))return;onFocus(o.id);}} onDoubleClick={e=>{if(e.target.closest('button'))return;onEdit(o);}} title="1 clic : voir les étapes · double-clic : ouvrir l'OF">
           <td className="prio"><button className="ib" aria-label="Monter" onClick={()=>onMove(i,-1)}>▲</button><button className="ib" aria-label="Descendre" onClick={()=>onMove(i,1)}>▼</button></td>
           <td>{o.numero}<span className={'src '+o.source}>{o.source}</span></td>
           <td>{o.client}</td><td className="tt">{o.titre}{o.enlevement&&!o.batDe&&<span className="tag">enlèvement</span>}{o.type==='autre'&&<span className="tag">hors livre</span>}</td>
@@ -949,7 +959,7 @@ function useSync({ofs,setOfs,reg,setReg}){
   if(on&&last.current===null){last.current={};(window.__BOOT.ofs||[]).forEach((o,i)=>last.current[o.id]=JSON.stringify([o,i]));lastReg.current={};REG_KEYS.forEach(k=>lastReg.current[k]=JSON.stringify(window.__BOOT[k]));seen.current=window.__BOOT.stamp||'';}
   const flush=async()=>{if(busy.current){timer.current=setTimeout(flush,400);return;}busy.current=true;setSt({etat:'busy',msg:''});
     try{const cur=window.__CUR;const up=[],ids=new Set();
-      cur.ofs.forEach((o,i)=>{ids.add(o.id);const j=JSON.stringify([o,i]);if(last.current[o.id]!==j)up.push({id:o.id,data:o,position:i});});
+      cur.ofs.forEach((o,i)=>{if(ids.has(o.id))return;ids.add(o.id);const j=JSON.stringify([o,i]);if(last.current[o.id]!==j)up.push({id:o.id,data:o,position:i});});
       const del=Object.keys(last.current).filter(id=>!ids.has(id));
       if(up.length)await sbFetch('lvsl_of',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(up.map(r=>({...r,updated_at:new Date().toISOString()})))});
       if(del.length)await sbFetch('lvsl_of?id=in.('+del.map(encodeURIComponent).join(',')+')',{method:'DELETE'});
