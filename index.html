@@ -268,10 +268,13 @@ textarea.inp.note{display:block;margin:0}
 .synbtn{font-weight:700;text-decoration:underline;color:inherit;padding:0 4px}
 .attn{display:block;font-size:10.5px;font-weight:600;opacity:.75}
 .syndet{display:block;font:400 10.5px var(--f-mono);color:var(--bad);max-width:620px;white-space:normal;word-break:break-word}
-tr.ofrow.hatchrow td{background-image:repeating-linear-gradient(135deg,transparent 0 7px,rgba(0,0,0,.13) 7px 10px)}
+tr.ofrow td.hatchcell{background-image:repeating-linear-gradient(135deg,transparent 0 6px,rgba(0,0,0,.16) 6px 9px)}
 .splitter{flex:none;height:10px;cursor:row-resize;display:flex;align-items:center;justify-content:center;background:var(--surface);border-top:1px solid var(--line);border-bottom:1px solid var(--line);touch-action:none}
 .splitter i{width:60px;height:4px;border-radius:2px;background:var(--inpbd)}.splitter:hover i,.splitter:focus-visible i{background:var(--accent)}
 .oflist{flex:1 1 0;min-height:120px}
+.grow{height:40px}.bar{top:4px;height:32px}.bar .bt b{font-size:11.5px}.bar .bt small{font-size:10px}
+.rlab{font-size:13px;gap:8px}.mpic{width:26px;height:26px}.mpic svg{width:17px;height:17px}
+.gantt .gscroll{flex:none}.days{height:72px}.dlab{height:32px}
 </style>
 </head><body>
 <script>window.SB_CONF={url:'https://elgzabndydvidkwitgbp.supabase.co',key:'sb_publishable_kTq6l0FOYWmTx5AZywoDHg_BZh8LSep',hash:'613cc1600f1da8046e65db6ac7d64bc711470e8b3b0f0a74e5a8298f2bc00053'};</script>
@@ -290,7 +293,7 @@ tr.ofrow.hatchrow td{background-image:repeating-linear-gradient(135deg,transpare
 // Midi, soir et nuit : opérateur absent ; la presse lancée continue seule (temps masqué), y compris la nuit.
 const WD=660, L0=180, L1=240, E0=480;
 const MACHINES=[
-  {id:'presse',nom:"Presse d'impression"},{id:'massicot',nom:'Massicot'},{id:'raineuse',nom:'Raineuse'},
+  {id:'presse',nom:'Impression'},{id:'massicot',nom:'Massicot'},{id:'raineuse',nom:'Raineuse'},
   {id:'pelliculeuse',nom:'Pelliculeuse'},{id:'encolleuse',nom:'Encolleuse'},{id:'emballeuse',nom:'Emballeuse'},{id:'agrafeuse',nom:'Agrafeuse'}];
 const DEFAULT_PARAMS={
   presseInt:{lancement:5,ppm:35}, presseCouv:{lancement:3,ppm:25},
@@ -628,7 +631,7 @@ function Gantt({height,scrollTick,onFocus,todayTick,focus,ofs,sched,cal,zoom,now
   const down=(e,t)=>{e.currentTarget.setPointerCapture(e.pointerId);setDrag({t,x0:e.clientX,dx:0});};
   const mv=e=>{if(drag&&!drag.t.done)setDrag({...drag,dx:e.clientX-drag.x0});};
   const up=(e,t)=>{if(!drag){return;}const d=drag;setDrag(null);if(Math.abs(d.dx)<5){onFocus(t.ofId);return;}onPin(t,Math.max(nowW,Math.round(t.s+d.dx/ppm)));};
-  return <section className="gantt" style={height?{flex:'none',height}:undefined} aria-label="Planning machines">
+  return <section className="gantt" style={height?{flex:'none',height}:{flex:'none'}} aria-label="Planning machines">
     <div className="gscroll" ref={scRef} onClick={e=>{if(!e.target.closest('.bar,.wait'))onFocus(null);}}>
       <div className="ginner" style={{width:W+LABW}}>
         <div className="ghead">
@@ -683,12 +686,12 @@ function OfList({focus,onFocus,ofs,sched,params,onEdit,onMove,upd,onDel}){
     <div className="tblwrap"><table>
       <thead><tr><th>Prio</th><th>N° commande</th><th>Client</th><th>Titre</th><th className="n">Qté</th><th className="n">Pages</th><th>Fichiers</th><th>Exemplaire</th><th>Avancement</th><th>Fin prévue</th><th>Expé. au plus tard</th><th>Livraison</th><th/></tr></thead>
       <tbody>{ofs.map((o,i)=>{const s=sched.ofs[o.id];const[bg,fg]=OF_COLORS[o.couleurIdx||0];if(!s)return null;
-        return <tr key={o.id} className={'ofrow'+(!o.fichiersOk?' hatchrow':'')+(s.retard?' rlate':'')+(focus===o.id?' sel':'')} style={{'--bg':bg,'--fg':fg}} onClick={e=>{if(e.target.closest('button'))return;onFocus(o.id);}} onDoubleClick={e=>{if(e.target.closest('button'))return;onEdit(o);}} title="1 clic : voir les étapes · double-clic : ouvrir l'OF">
+        return <tr key={o.id} className={'ofrow'+(s.retard?' rlate':'')+(focus===o.id?' sel':'')} style={{'--bg':bg,'--fg':fg}} onClick={e=>{if(e.target.closest('button'))return;onFocus(o.id);}} onDoubleClick={e=>{if(e.target.closest('button'))return;onEdit(o);}} title="1 clic : voir les étapes · double-clic : ouvrir l'OF">
           <td className="prio"><button className="ib" aria-label="Monter" onClick={()=>onMove(i,-1)}>▲</button><button className="ib" aria-label="Descendre" onClick={()=>onMove(i,1)}>▼</button></td>
           <td>{o.numero}<span className={'src '+o.source}>{o.source}</span></td>
           <td>{o.client}</td><td className="tt">{o.titre}{o.enlevement&&!o.batDe&&<span className="tag">enlèvement</span>}{o.type==='autre'&&<span className="tag">hors livre</span>}</td>
           <td className="n">{o.quantite}</td><td className="n">{o.pages}</td>
-          <td><button className={'chip '+(o.fichiersOk?'ok':'ko')} onClick={()=>upd(o.id,x=>({...x,fichiersOk:!x.fichiersOk}))}>{o.exemplaire?(o.fichiersOk?'BAT validé':'BAT à valider'):(o.fichiersOk?'OK':'En attente')}</button></td>
+          <td className={o.fichiersOk?'':'hatchcell'}><button className={'chip '+(o.fichiersOk?'ok':'ko')} onClick={()=>upd(o.id,x=>({...x,fichiersOk:!x.fichiersOk}))}>{o.exemplaire?(o.fichiersOk?'BAT validé':'BAT à valider'):(o.fichiersOk?'OK':'En attente')}</button></td>
           <td>{o.batDe?<span className="chip bat">BAT</span>:o.exemplaire?<span>Oui · BAT</span>:<span className="muted">Non</span>}</td>
           <td><span className="prog"><i style={{width:(s.nbFaits/s.nbOps*100)+'%'}}/></span> {s.nbFaits}/{s.nbOps}</td>
           <td className={s.retard?'bad':''}>{fmtDH(s.finDate)}{s.attente&&<small className="attn">{s.attente==='bat'?'en attente du BAT':'en attente des fichiers'}</small>}</td><td>{s.limite?fmtD(s.limite):<span className="muted">après BAT</span>}</td><td>{o.batDe?<span className="muted">—</span>:s.livraison?fmtD(s.livraison):<span className="muted">après BAT</span>}</td>
