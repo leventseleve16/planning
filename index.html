@@ -264,6 +264,9 @@ textarea.inp.note{display:block;margin:0}
 .gate{height:100%;display:flex;align-items:center;justify-content:center;background:var(--today);padding:16px}
 .gbox{background:var(--surface);border-radius:12px;padding:32px 36px;width:min(380px,100%);display:flex;flex-direction:column;gap:10px;box-shadow:0 24px 80px rgba(0,0,0,.4)}
 .gbox h1{margin:0 0 10px}
+.impwrap{overflow-x:scroll;padding-bottom:6px}.imptbl{min-width:1150px}.imptbl td{white-space:nowrap}
+.synbtn{font-weight:700;text-decoration:underline;color:inherit;padding:0 4px}
+.attn{display:block;font-size:10.5px;font-weight:600;opacity:.75}
 </style>
 </head><body>
 <script>window.SB_CONF={url:'https://elgzabndydvidkwitgbp.supabase.co',key:'sb_publishable_kTq6l0FOYWmTx5AZywoDHg_BZh8LSep',hash:'613cc1600f1da8046e65db6ac7d64bc711470e8b3b0f0a74e5a8298f2bc00053'};</script>
@@ -288,7 +291,7 @@ const DEFAULT_PARAMS={
   presseInt:{lancement:5,ppm:35}, presseCouv:{lancement:3,ppm:25},
   masInt:{a:3,b:0.03}, masCouv:{a:2,b:0.02}, masFin:{a:4.5,b:0.06},
   rai:{a:4.3,b:0.126}, pel:{a:12.5,b:0.05}, col:{a:8,b:0.28}, emb:{a:8.5,b:0.16},
-  sechageH:12, transportJO:3, delaiJ:14, attenteBAT:10,
+  sechageH:12, transportJO:3, delaiJ:14, attenteBAT:10, delaiBATJO:3,
   feuille:{l:320,h:450}, fondPerdu:3
 };
 function mondayOf(d){const x=new Date(d.getFullYear(),d.getMonth(),d.getDate());x.setDate(x.getDate()-(x.getDay()+6)%7);return x;}
@@ -352,8 +355,17 @@ function buildOps(of,P){
   ops.forEach(o=>{const e=st[o.code]||{};o.done=!!e.done;o.fixD=e.fixD;o.nbD=e.nbD;});
   return ops;
 }
-function dateLivraison(of,P){if(of.livraison)return new Date(of.livraison+'T12:00:00');const d=new Date((of.dateCommande||new Date().toISOString().slice(0,10))+'T12:00:00');d.setDate(d.getDate()+(+of.delai||P.delaiJ));return d;}
-function dateExpeLimite(of,P){const d=(of.enlevement||of.batDe)?new Date(dateLivraison(of,P)):shiftWorkDays(dateLivraison(of,P),-P.transportJO);d.setHours(17,0,0,0);return d;}
+const isoJour=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+/* Livraison client : commande + délai. OF de production avec BAT : le délai part du jour où le BAT est validé (null tant qu'il ne l'est pas). */
+function dateLivraison(of,P){
+  if(of.livraison&&!of.batDe)return new Date(of.livraison+'T12:00:00');
+  let base=of.dateCommande;
+  if(of.exemplaire&&!of.batDe){if(!of.fichiersOk||!of.batValideLe)return null;base=of.batValideLe;}
+  const d=new Date((base||isoJour())+'T12:00:00');d.setDate(d.getDate()+(+of.delai||P.delaiJ));return d;}
+/* Date limite : expédition (livraison − transport) ou fin de fabrication si enlèvement. OF BAT : envoi au plus tard N jours ouvrés après la commande. */
+function dateExpeLimite(of,P){
+  if(of.batDe){const d=shiftWorkDays(new Date((of.dateCommande||isoJour())+'T12:00:00'),+(P.delaiBATJO??3));d.setHours(17,0,0,0);return d;}
+  const L=dateLivraison(of,P);if(!L)return null;const d=of.enlevement?new Date(L):shiftWorkDays(L,-P.transportJO);d.setHours(17,0,0,0);return d;}
 function schedule(ofs,P,cal,nowDate,archives){
   const nowW=cal.date2w(nowDate);
   const machEnd=(t,m)=>cal.date2w(new Date(cal.w2date(t).getTime()+m*6e4)); // presse : temps réel, nuit comprise
@@ -390,7 +402,8 @@ function schedule(ofs,P,cal,nowDate,archives){
       if(o.readyAfter>o.e)res.waits.push({ofId:of.id,s:o.e,e:o.readyAfter,label:o.code==='COL'?'Séchage colle 12 h':'Séchage pelliculage 12 h'});
       done.add(o.code);res.tasks.push({ofId:of.id,...o});}}
     const fin=ops.length?Math.max(...ops.map(o=>o.e)):nowW;const finDate=cal.w2dateEnd(fin),lim=dateExpeLimite(of,P);
-    res.ofs[of.id]={fin,finDate,limite:lim,livraison:dateLivraison(of,P),retard:finDate>lim,nbOps:ops.length,nbFaits:ops.filter(o=>o.done).length};
+    const attente=!of.fichiersOk?(of.exemplaire&&!of.batDe?'bat':'fichiers'):null; /* pas de retard tant que les fichiers / le BAT ne sont pas validés */
+    res.ofs[of.id]={fin,finDate,limite:lim,livraison:dateLivraison(of,P),attente,retard:!attente&&!!lim&&finDate>lim,nbOps:ops.length,nbFaits:ops.filter(o=>o.done).length};
   }
   all.filter(x=>x.of.fichiersOk).forEach(place);
   all.forEach(place);
@@ -504,14 +517,15 @@ function ensureBats(list,P){
     if(o.exemplaire){
       const old=l.find(x=>x.batDe===o.id);
       if(old){out.push(old);}
-      else{const liv=shiftWorkDays(dateExpeLimite(o,P),-(+o.attenteBAT||P.attenteBAT)); /* BAT emballé au plus tard : expé limite de la série moins le retour BAT */
-        const b={id:uid(),etat:{},surcharges:{},fichiersOk:false,batDe:o.id,exemplaire:false,quantite:1,titre:o.titre+' · exemplaire BAT',livraison:liv.toISOString().slice(0,10),enlevement:true};
+      else{
+        const b={id:uid(),etat:{},surcharges:{},fichiersOk:false,batDe:o.id,exemplaire:false,quantite:1,titre:o.titre+' · exemplaire BAT',enlevement:false};
         SPEC.forEach(k=>b[k]=o[k]);b.papierInt2=o.papierInt2;b.pagesInt2=o.pagesInt2;out.push(b);}
     }
     out.push(o);
   });
-  return out;
+  return stampBat(out);
 }
+function stampBat(list){return list.map(o=>{if(!o.exemplaire||o.batDe)return o;if(o.fichiersOk&&!o.batValideLe)return{...o,batValideLe:todayIso()};if(!o.fichiersOk&&o.batValideLe){const{batValideLe,...r}=o;return r;}return o;});}
 function useNow(){const[n,setN]=useState(new Date());useEffect(()=>{const t=setInterval(()=>setN(new Date()),60000);return()=>clearInterval(t);},[]);return n;}
 
 function App(){
@@ -539,7 +553,7 @@ function App(){
   const sync=useSync({ofs,setOfs,reg:{papiers,clients,params,modeles},setReg:{papiers:setPapiers,clients:setClients,params:setParams,modeles:setModeles}});
   useEffect(()=>{if(!toast)return;const t=setTimeout(()=>setToast(''),3500);return()=>clearTimeout(t);},[toast]);
   const allClients=useMemo(()=>[...new Set([...clients,...ofs.map(o=>o.client).filter(Boolean)])].sort((a,b)=>a.localeCompare(b)),[clients,ofs]);
-  const upd=(id,fn)=>setOfs(l=>l.map(o=>o.id===id?fn(o):o));
+  const upd=(id,fn)=>setOfs(l=>ensureBats(l.map(o=>o.id===id?fn(o):o),params));
   const setEtat=(id,code,patch)=>upd(id,o=>{const e={...(o.etat||{})};const cur={...(e[code]||{}),...patch};Object.keys(cur).forEach(k=>cur[k]==null&&delete cur[k]);e[code]=cur;return{...o,etat:e};});
   const toggleDone=t=>{if(t.done)setEtat(t.ofId,t.code,{done:null,fixD:null,doneAt:null});else setEtat(t.ofId,t.code,{done:true,fixD:fixAt(t),doneAt:new Date().toISOString()});};
   const[todayTick,setTodayTick]=useState(0);const[daily,setDaily]=useState(false);
@@ -547,7 +561,7 @@ function App(){
   const saveOf=of0=>{const{_focusOp,...of}=of0;
     setOfs(l=>{let nl;if(l.some(o=>o.id===of.id))nl=l.map(o=>o.id===of.id?of:o);
       else{nl=[...l];const added={...of,couleurIdx:of.couleurIdx??(l.length%OF_COLORS.length)};
-        const lv=o=>dateLivraison(o,params).getTime(); // nouvel OF inséré selon sa date de livraison
+        const lv=o=>{const d=dateLivraison(o,params);return d?d.getTime():Infinity;}; // nouvel OF inséré selon sa date de livraison
         const i=nl.findIndex(o=>!o.batDe&&lv(o)>lv(added));if(i<0)nl.push(added);else nl.splice(i,0,added);}
       return ensureBats(nl,params);});
     setEdit(null);setToast('OF enregistré');
@@ -561,7 +575,7 @@ function App(){
   const confirmImport=sel=>{const add=imp.drafts.filter((d,i)=>sel[i]);add.forEach(d=>{const{_file,_dup,...o}=d;saveOf({id:uid(),delai:params.delaiJ,etat:{},fichiersOk:false,...o});});setImp(null);setToast(add.length+' OF créé(s), hachurés tant que les fichiers ne sont pas validés');};
   return <div className="app">
     <header className="top">
-      <div className="brand"><span className="eyebrow">Le Vent Se Lève · atelier</span><h1>Planning impression</h1>{window.SB_CONF&&<span className={'sync '+sync.etat} title={sync.msg}>{sync.etat==='ok'?'● Enregistré':sync.etat==='busy'?'● Enregistrement…':'● Hors ligne : '+sync.msg}</span>}</div>
+      <div className="brand"><span className="eyebrow">Le Vent Se Lève · atelier</span><h1>Planning impression</h1>{window.SB_CONF&&<span className={'sync '+sync.etat} title={sync.detail||sync.msg}>{sync.etat==='ok'?'● Enregistré':sync.etat==='busy'?'● Enregistrement…':<>● {sync.msg} <button className="ib synbtn" onClick={sync.retry}>Réessayer</button></>}</span>}</div>
       <div className="actions">
         <label className="btn btn-primary file"><i className="ic">⇪</i>Importer facture / devis<input id="pdfin" type="file" accept="application/pdf" multiple onChange={e=>{onFiles([...e.target.files]);e.target.value='';}}/></label>
         <button className="btn" onClick={()=>setTodayTick(x=>x+1)}><i className="ic">◉</i>Aujourd'hui</button>
@@ -575,7 +589,7 @@ function App(){
     <Gantt focus={focus} ofs={actifs} sched={sched} cal={cal} zoom={zoom} now={now} scrollTick={scrollTick} onFocus={setFocus} onSel={t=>{setFocus(t.ofId);setEdit({...ofs.find(o=>o.id===t.ofId),_focusOp:t.code});}} todayTick={todayTick} onPin={(t,w)=>setEtat(t.ofId,t.code,{nbD:cal.w2date(w).toISOString()})}/>
     <OfList focus={focus} onFocus={id=>{setFocus(id);if(id)setScrollTick(x=>x+1);}} ofs={actifs} sched={sched} params={params} onEdit={setEdit} onMove={move} upd={upd} onDel={id=>{setOfs(l=>l.filter(o=>o.id!==id&&o.batDe!==id));if(focus===id)setFocus(null);}}/>
     {edit&&<OfForm modeles={modeles} of={edit} cal={cal} fixAt={fixAt} tasks={sched.tasks.filter(t=>t.ofId===edit.id)} params={params} papiers={papiers} clients={allClients} onAddPapier={p=>setPapiers(l=>[...l,p])} onSave={saveOf} onClose={()=>setEdit(null)}/>}
-    {menu&&<Settings onRestore={c=>{setOfs(ensureBats(c.ofs||[],params));if(c.reglages){const r=c.reglages;r.papiers&&setPapiers(r.papiers);r.clients&&setClients(r.clients);r.params&&setParams({...DEFAULT_PARAMS,...r.params});r.modeles&&setModeles(r.modeles);}setMenu(null);setToast('Sauvegarde restaurée');}} modeles={modeles} setModeles={setModeles} tab={menu} setTab={setMenu} papiers={papiers} setPapiers={setPapiers} clients={allClients} setClients={setClients} params={params} setParams={setParams} onReset={()=>{setOfs(exemple());setMenu(null);setToast('Exemple rechargé');}}/>}
+    {menu&&<Settings onRestore={c=>{setOfs(ensureBats(c.ofs||[],params));if(c.reglages){const r=c.reglages;r.papiers&&setPapiers(r.papiers);r.clients&&setClients(r.clients);r.params&&setParams({...DEFAULT_PARAMS,...r.params});r.modeles&&setModeles(r.modeles);}setMenu(null);setToast('Sauvegarde restaurée');}} modeles={modeles} setModeles={setModeles} tab={menu} setTab={setMenu} papiers={papiers} setPapiers={setPapiers} clients={allClients} setClients={setClients} params={params} setParams={setParams} onReset={()=>{setOfs(ensureBats(exemple(),params));setMenu(null);setToast('Exemple rechargé');}}/>}
     {hist&&<Historique ofs={archives} onClose={()=>setHist(false)} onDel={id=>setOfs(l=>l.filter(o=>o.id!==id))}/>}
     {daily&&<Daily onNote={(t,v)=>setEtat(t.ofId,t.code,{note:v||null})} sched={sched} ofs={actifs} cal={cal} now={now} onToggle={toggleDone} onOpen={t=>{setDaily(false);setFocus(t.ofId);setEdit({...ofs.find(o=>o.id===t.ofId),_focusOp:t.code});}} onClose={()=>setDaily(false)}
       onDur={(t,m)=>upd(t.ofId,o=>o.type==='autre'?{...o,opsManuelles:(o.opsManuelles||[]).map((x,j)=>(x.id||'M'+j)===t.code?{...x,op:m}:x)}:((o.extraOps||[]).some(x=>x.id===t.code)?{...o,extraOps:o.extraOps.map(x=>x.id===t.code?{...x,op:m}:x)}:{...o,surcharges:{...(o.surcharges||{}),[t.code]:m}}))}/>}
@@ -667,7 +681,7 @@ function OfList({focus,onFocus,ofs,sched,params,onEdit,onMove,upd,onDel}){
           <td><button className={'chip '+(o.fichiersOk?'ok':'ko')} onClick={()=>upd(o.id,x=>({...x,fichiersOk:!x.fichiersOk}))}>{o.exemplaire?(o.fichiersOk?'BAT validé':'BAT à valider'):(o.fichiersOk?'OK':'En attente')}</button></td>
           <td>{o.batDe?<span className="chip bat">BAT</span>:o.exemplaire?<span>Oui · BAT</span>:<span className="muted">Non</span>}</td>
           <td><span className="prog"><i style={{width:(s.nbFaits/s.nbOps*100)+'%'}}/></span> {s.nbFaits}/{s.nbOps}</td>
-          <td className={s.retard?'bad':''}>{fmtDH(s.finDate)}</td><td>{fmtD(s.limite)}</td><td>{fmtD(s.livraison)}</td>
+          <td className={s.retard?'bad':''}>{fmtDH(s.finDate)}{s.attente&&<small className="attn">{s.attente==='bat'?'en attente du BAT':'en attente des fichiers'}</small>}</td><td>{s.limite?fmtD(s.limite):<span className="muted">après BAT</span>}</td><td>{o.batDe?<span className="muted">—</span>:s.livraison?fmtD(s.livraison):<span className="muted">après BAT</span>}</td>
           <td><div className="acts"><button className="btn sm" onClick={()=>onEdit(o.batDe?ofs.find(p=>p.id===o.batDe)||o:o)}>Modifier</button>
             {confirm===o.id?<button className="btn sm btn-danger" onClick={()=>{onDel(o.id);setConfirm(null);}}>Confirmer</button>:<button className="btn sm" onClick={()=>setConfirm(o.id)}>Suppr.</button>}</div></td>
         </tr>;})}</tbody>
@@ -717,7 +731,7 @@ function OfForm({of,cal,fixAt,tasks,params,papiers,clients,modeles,onAddPapier,o
     <div className="mhead"><div className="mh1"><span className="eyebrow">{isBat?'OF exemplaire BAT':'Ordre de fabrication'} · {f.source}</span><h3>{f.titre||'Nouvel OF'}</h3>
       <div className="sumband"><span className={'pill src '+f.source}>{f.source}</span>{f.numero&&<span className="pill">N° {f.numero}</span>}{f.client&&<span className="pill">{f.client}</span>}{f.quantite&&<span className="pill">{f.quantite} ex.</span>}
         <span className={'pill '+(f.fichiersOk?'ok':'ko')}>{f.fichiersOk?(f.exemplaire?'BAT validé':'Fichiers validés'):(f.exemplaire?'BAT à valider':'Fichiers en attente')}</span>
-        <span className="pill">{f.enlevement?'Enlèvement':'Expédition'} au plus tard {fmtD(lim)}</span></div>
+        <span className="pill">{lim?(isBat?'Envoi du BAT':f.enlevement?'Enlèvement':'Expédition')+' au plus tard '+fmtD(lim):'Délai à partir de la validation du BAT'}</span></div>
       <div className="tabs" role="tablist">
         <button type="button" role="tab" aria-selected={tab==='infos'} className={tab==='infos'?'on':''} onClick={()=>setTab('infos')}>Commande · caractéristiques · délais</button>
         <button type="button" role="tab" aria-selected={tab==='ops'} className={tab==='ops'?'on':''} onClick={()=>setTab('ops')}>Opérations <b className="cnt">{nbDone}/{ops.length}</b></button>
@@ -751,11 +765,11 @@ function OfForm({of,cal,fixAt,tasks,params,papiers,clients,modeles,onAddPapier,o
           {f.exemplaire&&<div className="sub2 inline"><span className="lbl">Production après le BAT de</span><input id="f-att" className="inp n" type="number" min="0" value={f.attenteBAT??params.attenteBAT} onChange={e=>s('attenteBAT',e.target.value)}/><span className="lbl">j ouvrés</span></div>}</Fld>:<div/>}
         <Fld l="Date de commande"><input id="f-dc" className="inp" type="date" value={f.dateCommande||''} onChange={e=>s('dateCommande',e.target.value)}/></Fld>
         <Fld l="Délai client (jours calendaires)"><input id="f-d" className="inp" type="number" min="1" value={f.delai||14} onChange={e=>{s('delai',e.target.value);s('livraison','');}}/></Fld>
-        <Fld l="Livraison client"><input id="f-liv" className="inp" type="date" value={f.livraison||liv.toISOString().slice(0,10)} onChange={e=>s('livraison',e.target.value)}/>
+        <Fld l="Livraison client"><input id="f-liv" className="inp" type="date" value={f.livraison||(liv?liv.toISOString().slice(0,10):'')} disabled={isBat||(f.exemplaire&&!liv&&!f.livraison)} onChange={e=>s('livraison',e.target.value)}/>
           <label className="under"><input id="f-enl" type="checkbox" checked={!!f.enlevement} onChange={e=>s('enlevement',e.target.checked)}/> Enlèvement sur site</label></Fld>
       </div>
       <div className={'checks valid '+(f.fichiersOk?'ok':'ko')}><label><input id="f-ok" type="checkbox" checked={!!f.fichiersOk} onChange={e=>s('fichiersOk',e.target.checked)}/> {f.exemplaire?'BAT validé par le client (fichiers de production OK)':'Fichiers client validés'}</label>
-        <span>{f.fichiersOk?'L\'OF peut démarrer.':'Sans cette case, l\'OF est hachuré et ne peut pas démarrer.'} {f.enlevement?'Fin de fabrication':'Expédition'} au plus tard le <b>{fmtD(lim)}</b>{f.enlevement?'':' (livraison '+fmtD(liv)+' moins '+params.transportJO+' j ouvrés de transport)'}.</span></div>
+        <span>{f.fichiersOk?'L\'OF peut démarrer.':'Sans cette case, l\'OF est hachuré et ne peut pas démarrer.'} {isBat?<>BAT à envoyer au plus tard le <b>{fmtD(lim)}</b> ({params.delaiBATJO} j ouvrés après la commande).</>:!lim?<>Les {f.delai||params.delaiJ} jours de délai client partiront du jour où tu coches « BAT validé ».</>:<>{f.enlevement?'Fin de fabrication':'Expédition'} au plus tard le <b>{fmtD(lim)}</b>{f.enlevement?'':' (livraison '+fmtD(liv)+' moins '+params.transportJO+' j ouvrés de transport)'}{f.exemplaire&&f.batValideLe?', délai compté depuis la validation du BAT le '+fmtD(new Date(f.batValideLe+'T12:00')):''}.</>}</span></div>
       </section>
     </>}
     {tab==='ops'&&<section className="fsec opsec">
@@ -876,7 +890,7 @@ function ImportReview({imp,onOk,onClose}){
     <div className="mhead"><div><span className="eyebrow">Import PDF</span><h3>{imp.drafts.length} OF détecté(s)</h3></div><button className="ib x" onClick={onClose} aria-label="Fermer">✕</button></div>
     <div className="mbody">
       {imp.errs.length>0&&<p className="warn">Aucun livre reconnu dans : {imp.errs.join(', ')}. Pour un travail hors livre, crée l'OF à la main.</p>}
-      <div className="tblwrap"><table><thead><tr><th/><th>Source</th><th>N°</th><th>Client</th><th>Titre</th><th>Format</th><th className="n">Qté</th><th className="n">Pages</th><th>Intérieur</th><th>Pellic.</th><th>Ex.</th></tr></thead>
+      <div className="tblwrap impwrap"><table className="imptbl"><thead><tr><th/><th>Source</th><th>N°</th><th>Client</th><th>Titre</th><th>Format</th><th className="n">Qté</th><th className="n">Pages</th><th>Intérieur</th><th>Pellic.</th><th>Ex.</th></tr></thead>
       <tbody>{imp.drafts.map((d,i)=><tr key={i}><td><input id={'imp'+i} type="checkbox" checked={sel[i]} onChange={e=>setSel(s=>s.map((v,j)=>j===i?e.target.checked:v))}/></td>
         <td>{d.source}</td><td>{d.numero}{d._dup&&<span className="tag">déjà présent</span>}</td><td>{d.client}</td><td>{d.titre}</td><td>{d.largeur}×{d.hauteur}</td><td className="n">{d.quantite}</td><td className="n">{d.pages}</td>
         <td>{d.couleur==='NB'?'N/B':'Couleur'} · {d.papierInt}</td><td>{d.pelliculage}</td><td>{d.exemplaire?'Oui':'Non'}</td></tr>)}</tbody></table></div>
@@ -912,7 +926,7 @@ function Settings({onRestore,modeles,setModeles,tab,setTab,papiers,setPapiers,cl
   const rowsT=[['Presse intérieur : lancement (min)','presseInt.lancement'],['Presse intérieur : vitesse (faces SRA3 / min)','presseInt.ppm'],['Presse couverture : lancement (min)','presseCouv.lancement'],['Presse couverture : vitesse (faces SRA3 / min)','presseCouv.ppm'],
     ['Massicot intérieur : calage (min)','masInt.a'],['Massicot intérieur : par livre (min)','masInt.b'],['Massicot couverture : calage','masCouv.a'],['Massicot couverture : par livre','masCouv.b'],['Massicot final : calage','masFin.a'],['Massicot final : par livre','masFin.b'],
     ['Rainage : calage','rai.a'],['Rainage : par livre','rai.b'],['Pelliculage : calage','pel.a'],['Pelliculage : par livre','pel.b'],['Collage : calage','col.a'],['Collage : par livre','col.b'],['Emballage : calage','emb.a'],['Emballage : par livre','emb.b'],
-    ['Séchage (h)','sechageH'],['Transport (jours ouvrés)','transportJO'],['Série placée après le BAT (jours ouvrés)','attenteBAT'],['Délai client par défaut (jours)','delaiJ']];
+    ['Séchage (h)','sechageH'],['Transport (jours ouvrés)','transportJO'],['Série placée après le BAT (jours ouvrés)','attenteBAT'],['Envoi du BAT après la commande (jours ouvrés)','delaiBATJO'],['Délai client par défaut (jours)','delaiJ']];
   const get=path=>path.split('.').reduce((o,k)=>o[k],P);
   return <div className="overlay" onClick={()=>setTab(null)}><div className="modal" onClick={e=>e.stopPropagation()} role="dialog" aria-label="Listes et réglages">
     <div className="mhead"><div className="seg">{[['papiers','Papiers'],['clients','Clients'],['modeles','Modèles hors livre'],['temps','Temps standards'],...(window.SB_CONF?[['sauv','Sauvegardes']]:[])].map(([v,l])=><button key={v} className={tab===v?'on':''} onClick={()=>setTab(v)}>{l}</button>)}</div><button className="ib x" onClick={()=>setTab(null)} aria-label="Fermer">✕</button></div>
@@ -931,7 +945,7 @@ function sbFetch(path,opts={}){const c=window.SB_CONF;return fetch(c.url+'/rest/
 const REG_KEYS=['papiers','clients','params','modeles'];
 function useSync({ofs,setOfs,reg,setReg}){
   const on=!!window.SB_CONF;const[st,setSt]=useState({etat:'ok',msg:''});
-  const last=useRef(null),lastReg=useRef(null),timer=useRef(null),busy=useRef(false),seen=useRef('');
+  const last=useRef(null),lastReg=useRef(null),timer=useRef(null),busy=useRef(false),seen=useRef(''),retry=useRef(false);
   if(on&&last.current===null){last.current={};(window.__BOOT.ofs||[]).forEach((o,i)=>last.current[o.id]=JSON.stringify([o,i]));lastReg.current={};REG_KEYS.forEach(k=>lastReg.current[k]=JSON.stringify(window.__BOOT[k]));seen.current=window.__BOOT.stamp||'';}
   const flush=async()=>{if(busy.current){timer.current=setTimeout(flush,400);return;}busy.current=true;setSt({etat:'busy',msg:''});
     try{const cur=window.__CUR;const up=[],ids=new Set();
@@ -942,21 +956,21 @@ function useSync({ofs,setOfs,reg,setReg}){
       const rup=REG_KEYS.filter(k=>lastReg.current[k]!==JSON.stringify(cur.reg[k])).map(k=>({cle:k,valeur:cur.reg[k],updated_at:new Date().toISOString()}));
       if(rup.length)await sbFetch('lvsl_reglages',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(rup)});
       up.forEach(r=>last.current[r.id]=JSON.stringify([r.data,r.position]));del.forEach(id=>delete last.current[id]);rup.forEach(r=>lastReg.current[r.cle]=JSON.stringify(r.valeur));
-      seen.current=new Date().toISOString();setSt({etat:'ok',msg:''});}
-    catch(e){setSt({etat:'err',msg:'modifications non enregistrées, nouvel essai…'});timer.current=setTimeout(flush,5000);}
+      seen.current=new Date().toISOString();retry.current=false;setSt({etat:'ok',msg:''});}
+    catch(e){retry.current=true;console.warn('Supabase écriture',e);setSt({etat:'err',msg:'modifications pas encore enregistrées, nouvel essai automatique…',detail:String(e.message||e).slice(0,300)});timer.current=setTimeout(flush,5000);}
     finally{busy.current=false;}};
   useEffect(()=>{if(!on)return;window.__CUR={ofs,reg};clearTimeout(timer.current);timer.current=setTimeout(flush,700);},[ofs,reg.papiers,reg.clients,reg.params,reg.modeles]);
   // lecture des modifications faites depuis un autre poste
-  useEffect(()=>{if(!on)return;const poll=async()=>{if(busy.current||document.hidden)return;
+  useEffect(()=>{if(!on)return;const poll=async()=>{if(busy.current)return;
       const dirty=window.__CUR&&(window.__CUR.ofs.some((o,i)=>last.current[o.id]!==JSON.stringify([o,i]))||Object.keys(last.current).length!==window.__CUR.ofs.length);if(dirty)return;
       try{const a=await sbFetch('lvsl_of?select=updated_at&order=updated_at.desc&limit=1'),b=await sbFetch('lvsl_reglages?select=updated_at&order=updated_at.desc&limit=1'),n=await sbFetch('lvsl_of?select=id');
         const stamp=[(a[0]||{}).updated_at,(b[0]||{}).updated_at].filter(Boolean).sort().pop()||'';
         if(stamp>seen.current||n.length!==Object.keys(last.current).length){const d=await loadAll();
           last.current={};d.ofs.forEach((o,i)=>last.current[o.id]=JSON.stringify([o,i]));REG_KEYS.forEach(k=>{if(d[k]!=null){lastReg.current[k]=JSON.stringify(d[k]);setReg[k](d[k]);}});
           window.__CUR={...window.__CUR,ofs:d.ofs};setOfs(d.ofs);seen.current=d.stamp;}
-        setSt(s=>s.etat==='err'?s:{etat:'ok',msg:''});}catch(e){setSt({etat:'err',msg:'connexion perdue'});}};
+        if(!retry.current)setSt({etat:'ok',msg:''});}catch(e){console.warn('Supabase lecture',e);setSt({etat:'err',msg:'connexion à la base interrompue, nouvel essai dans 15 s',detail:String(e.message||e).slice(0,300)});}};
     const t=setInterval(poll,15000);window.addEventListener('focus',poll);return()=>{clearInterval(t);window.removeEventListener('focus',poll);};},[]);
-  return st;
+  return {...st,retry:()=>{clearTimeout(timer.current);flush();window.dispatchEvent(new Event('focus'));}};
 }
 async function loadAll(){const rows=await sbFetch('lvsl_of?select=*&order=position');const regs=await sbFetch('lvsl_reglages?select=*');
   const d={ofs:rows.map(r=>r.data),stamp:[...rows.map(r=>r.updated_at),...regs.map(r=>r.updated_at)].filter(Boolean).sort().pop()||''};regs.forEach(r=>d[r.cle]=r.valeur);return d;}
