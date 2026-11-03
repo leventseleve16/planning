@@ -275,6 +275,18 @@ tr.ofrow td.hatchcell{background-image:repeating-linear-gradient(135deg,transpar
 .grow{height:40px}.bar{top:4px;height:32px}.bar .bt b{font-size:11.5px}.bar .bt small{font-size:10px}
 .rlab{font-size:13px;gap:8px}.mpic{width:26px;height:26px}.mpic svg{width:17px;height:17px}
 .gantt .gscroll{flex:none}.days{height:72px}.dlab{height:32px}
+/* gain de hauteur */
+.top{padding-block:6px}.top h1{font-size:18px}.top .eyebrow{font-size:9px}.btn{padding:5px 10px}
+.legend{padding-top:3px;padding-bottom:3px;font-size:10.5px;gap:3px 12px}
+.olhead{padding-top:5px;padding-bottom:3px}.olhead h2{font-size:13px}
+.oflist td{padding:3px 8px}.oflist .tt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:320px}
+.oflist .chip{padding:1px 8px}.oflist .btn.sm{padding:2px 7px}
+.rlab{z-index:8}.corner{z-index:9}
+.undoctl{display:inline-flex;gap:4px}.btn:disabled{opacity:.4}
+.pinrow{margin-top:6px;padding:6px 10px;background:var(--kobg);color:var(--ko);border-radius:6px;font-size:12px}
+.bar.pinned::after{content:'📌';position:absolute;right:1px;top:-1px;font-size:10px}
+.imptbl .ldk{display:block;margin-top:3px;font-size:12px;padding:3px 4px;min-width:118px}.inp.need{border-color:#e8710a;background:#fff4e8}.fmtin{display:inline-flex;align-items:center;gap:3px}.fmtin .inp{width:62px;padding:3px 4px}.blk{display:block}
+.inp.exsel{font-weight:600}.inp.exsel.oui{background:#d6e6fb;border-color:#2f6db5;color:#123f73}.inp.exsel.non{background:#fde3c8;border-color:#e8710a;color:#7a3a00}.inp.exsel option{background:#fff;color:#1a1a1a}
 </style>
 </head><body>
 <script>window.SB_CONF={url:'https://elgzabndydvidkwitgbp.supabase.co',key:'sb_publishable_kTq6l0FOYWmTx5AZywoDHg_BZh8LSep',hash:'613cc1600f1da8046e65db6ac7d64bc711470e8b3b0f0a74e5a8298f2bc00053'};</script>
@@ -373,7 +385,7 @@ function dateLivraison(of,P){
 /* Date limite : expédition (livraison − transport) ou fin de fabrication si enlèvement. OF BAT : envoi au plus tard N jours ouvrés après la commande. */
 function dateExpeLimite(of,P){
   if(of.batDe){const d=shiftWorkDays(new Date((of.dateCommande||isoJour())+'T12:00:00'),+(P.delaiBATJO??3));d.setHours(17,0,0,0);return d;}
-  const L=dateLivraison(of,P);if(!L)return null;const d=of.enlevement?new Date(L):shiftWorkDays(L,-P.transportJO);d.setHours(17,0,0,0);return d;}
+  const L=dateLivraison(of,P);if(!L)return null;const d=of.enlevement?new Date(L):shiftWorkDays(L,-(of.transportJO??P.transportJO));d.setHours(17,0,0,0);return d;}
 function schedule(ofs,P,cal,nowDate,archives){
   const nowW=cal.date2w(nowDate);
   const machEnd=(t,m)=>cal.date2w(new Date(cal.w2date(t).getTime()+m*6e4)); // presse : temps réel, nuit comprise
@@ -472,6 +484,62 @@ function parseDocument(text,papiers,todayIso){
   }
   return out;
 }
+
+/* ===== MAILS .EML (La Découverte) ===== */
+function b2s(u8){let s='';for(let i=0;i<u8.length;i+=8192)s+=String.fromCharCode.apply(null,u8.subarray(i,i+8192));return s;}
+function s2b(s){const u=new Uint8Array(s.length);for(let i=0;i<s.length;i++)u[i]=s.charCodeAt(i)&255;return u;}
+function decCs(bin,cs){try{return new TextDecoder(cs||'utf-8').decode(s2b(bin));}catch(e){return new TextDecoder('utf-8').decode(s2b(bin));}}
+const qpDec=s=>s.replace(/=\r?\n/g,'').replace(/=([0-9A-F]{2})/gi,(_,h)=>String.fromCharCode(parseInt(h,16)));
+const b64Dec=s=>{const c=s.replace(/[^A-Za-z0-9+/=]/g,'');return typeof atob!=='undefined'?atob(c):Buffer.from(c,'base64').toString('latin1');};
+const hdrWord=v=>(v||'').replace(/\?=\s+=\?/g,'?==?').replace(/=\?([^?]+)\?([QB])\?([^?]*)\?=/gi,(_,cs,e,t)=>decCs(e.toUpperCase()==='Q'?qpDec(t.replace(/_/g,' ')):b64Dec(t),cs));
+function splitMsg(bin){const m=/\r?\n\r?\n/.exec(bin);const h=m?bin.slice(0,m.index):bin,body=m?bin.slice(m.index+m[0].length):'';
+  const H={};h.replace(/\r?\n[ \t]+/g,' ').split(/\r?\n/).forEach(l=>{const x=/^([\w-]+):\s*(.*)$/.exec(l);if(x)H[x[1].toLowerCase()]=x[2];});return{H,body};}
+function walkMime(bin,acc){
+  const{H,body}=splitMsg(bin);const ct=H['content-type']||'text/plain',cd=H['content-disposition']||'';
+  const bd=(/boundary="?([^";]+)"?/i.exec(ct)||[])[1];
+  if(/^multipart\//i.test(ct)&&bd){body.split('--'+bd).slice(1).forEach(p=>{if(!/^--/.test(p))walkMime(p.replace(/^\r?\n/,''),acc);});return;}
+  const enc=(H['content-transfer-encoding']||'').toLowerCase().trim();
+  const raw=enc==='base64'?b64Dec(body):enc==='quoted-printable'?qpDec(body):body;
+  const fn2=/filename\*=(?:[\w-]+)?'[^']*'([^;\s]+)/i.exec(cd), fn=fn2?decodeURIComponent(fn2[1]):hdrWord((/(?:file)?name="?([^";]+)"?/i.exec(cd+';'+ct)||[])[1]||'');
+  const cs=(/charset="?([^";]+)"?/i.exec(ct)||[])[1];
+  if(fn||/attachment/i.test(cd))acc.att.push({name:fn,type:ct.split(';')[0].trim().toLowerCase(),bin:raw});
+  else if(/^text\/plain/i.test(ct)&&!acc.text)acc.text=decCs(raw,cs);
+  else if(/^text\/html/i.test(ct)&&!acc.html)acc.html=decCs(raw,cs);
+}
+function parseEml(u8){
+  const bin=b2s(u8),{H}=splitMsg(bin),acc={text:'',html:'',att:[]};walkMime(bin,acc);
+  let text=acc.text;if(!text&&acc.html)text=acc.html.replace(/<\/?(b|strong|i|em)\b[^>]*>/gi,'*').replace(/<br\s*\/?>|<\/p>|<\/div>/gi,'\n').replace(/<[^>]+>/g,'').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&');
+  return{subject:hdrWord(H.subject),from:hdrWord(H.from),date:H.date||'',text:(text||'').replace(/\r/g,''),att:acc.att};
+}
+const LD_PAP={epreuve:{int:'SRA3 Soporset 80 g Blanc',couv:'SRA3 Color Copy Bristol 250 g'},programme:{int:'A3 Discovery 75 g Blanc',couv:'SRA3 Color Copy Bristol 160 g'}};
+const ldKind=s=>/[ée]preuve/i.test(s||'')?'epreuve':/programme/i.test(s||'')?'programme':null;
+function ldApply(d,kind,papiers){const P=LD_PAP[kind];if(!P)return{...d,ldKind:null};const f=n=>(papiers||[]).find(p=>p===n)||n;const r={...d,ldKind:kind,papierInt:f(P.int),papierCouv:f(P.couv)};
+  if(kind==='programme'&&(!r.largeur||!r.hauteur)){r.largeur=210;r.hauteur=297;r._fmtDef=1;} /* programme : A4 par défaut */
+  return r;}
+function addJO(iso,n){const d=new Date(iso+'T12:00:00');let k=0;while(k<n){d.setDate(d.getDate()+1);const w=d.getDay();if(w!==0&&w!==6)k++;}return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function ldExtract(b){
+  const f=/Format[^\n:]*:\s*([\d.,]+)\s*[x×]\s*([\d.,]+)\s*(mm|cm)?/i.exec(b);let L='',H='';
+  if(f){L=num(f[1]);H=num(f[2]);const cm=f[3]?/cm/i.test(f[3]):Math.max(L,H)<60;if(cm){L=Math.round(L*10);H=Math.round(H*10);}}
+  const pg=(/(\d+)\s*pages?\b/i.exec(b)||[])[1], q=(/Quantit[ée]\s*:?\s*(\d+)/i.exec(b)||/(\d+)\s*(?:ex\b|ex\.|exemplaires?)/i.exec(b)||[])[1];
+  const coul=b.split('\n').some(l=>!/couv/i.test(l)&&/couleur|quadri/i.test(l)&&!/noir/i.test(l));
+  return{largeur:L,hauteur:H,pages:pg?+pg:'',quantite:q?+q:'',couleur:coul?'Couleur':'NB'};
+}
+/* Commande La Découverte : un OF par livre du mail. « épreuve » / « programme » dans le sujet fixe les papiers. */
+function parseLaDecouverte(mail,papiers,todayIso){
+  const t=mail.text;
+  if(!/editionsladecouverte\.com/i.test(t+' '+mail.from))return [];
+  const sujet=((/Sujet\s*:\s*([^\n]+)/.exec(t)||[])[1]||mail.subject||'').replace(/^\s*((fwd?|tr|re)\s*:\s*)+/i,'').trim();
+  const kind=ldKind(sujet);
+  const dm=new Date(((/\nDate\s*:\s*([^\n]+)/.exec(t)||[])[1]||mail.date||'').trim()), dOk=!isNaN(dm), dd=dOk?dm:new Date(todayIso+'T12:00:00');
+  const numero='Découverte '+String(dd.getDate()).padStart(2,'0')+'/'+String(dd.getMonth()+1).padStart(2,'0'); /* n° = « Découverte » + date du mail jj/mm */
+  const debut=t.search(/\n\s*Bonjour\b/i), corps=t.slice(debut<0?0:debut).split(/\n\s*(?:Bonne (?:soirée|journée|fin)|Merci à vous|Cordialement|Bien à vous)\b/i)[0];
+  const lines=corps.split('\n'),idx=[];
+  lines.forEach((l,i)=>{const m=/^\s*\*+\s*([^*\n]*?[A-Za-zÀ-ÿ][^*\n]*?)\s*\*+\s*$/.exec(l);if(m&&!/https?:|@|^\d+\s*(pages?|ex)\b/i.test(m[1]))idx.push([i,m[1].trim()]);});
+  let livres=idx.map(([i,ti],k)=>({titre:ti,...ldExtract(lines.slice(i+1,k+1<idx.length?idx[k+1][0]:lines.length).join('\n'))})).filter(x=>x.pages||x.quantite);
+  if(!livres.length){const x=ldExtract(corps);if(x.pages||x.quantite)livres=[{titre:sujet,...x}];}
+  return livres.map(x=>ldApply({source:'LVSL',client:'La Découverte',numero,...x,type:'livre',pelliculage:'non',exemplaire:false,fichiersOk:true,
+    dateCommande:todayIso,delai:3,transportJO:1,livraison:addJO(todayIso,3),ld:true},kind,papiers));
+}
 </script>
 <script type="text/babel" data-presets="react">
 const {useState,useEffect,useMemo,useRef}=React;
@@ -539,6 +607,8 @@ function useNow(){const[n,setN]=useState(new Date());useEffect(()=>{const t=setI
 function App(){
   const init=useMemo(()=>window.__BOOT||load(),[]);
   const[ofs,setOfs]=useState(()=>ensureBats((init?.ofs||exemple()).map(o=>({...o,source:o.source==='JIML'?'JIML':'LVSL'})),{...DEFAULT_PARAMS,...(init?.params||{})}));
+  const undoH=useRef({past:[],fut:[],prev:null,skip:false});const[,setHv]=useState(0);
+  const setOfsRemote=v=>{undoH.current.skip=true;setOfs(v);};
   const[focus,setFocus]=useState(null);const[scrollTick,setScrollTick]=useState(0);
   const[papiers,setPapiers]=useState(init?.papiers||PAPIERS_CSV);
   const[clients,setClients]=useState(init?.clients||[]);
@@ -558,13 +628,22 @@ function App(){
     setOfs(l=>l.map(o=>fin.some(f=>f.id===o.id)?{...o,archive:new Date().toISOString()}:o));setToast(fin.length>1?fin.length+' OF terminés, archivés dans l\'historique':'OF « '+fin[0].titre+' » terminé, archivé dans l\'historique');},[sched]);
   useEffect(()=>{const miss=sched.tasks.filter(t=>t.done&&t.fixS==null);if(!miss.length)return;setOfs(l=>l.map(o=>{const m=miss.filter(t=>t.ofId===o.id);if(!m.length)return o;const e={...(o.etat||{})};m.forEach(t=>{e[t.code]={...(e[t.code]||{}),fixD:cal.w2date(t.s).toISOString()};});return{...o,etat:e};}));},[sched]);
   useEffect(()=>{if(window.SB_CONF){try{localStorage.setItem('lvsl-zi',String(zi));}catch(e){}}else save({ofs,papiers,clients,params,zi,modeles});},[ofs,papiers,clients,params,zi,modeles]);
-  const sync=useSync({ofs,setOfs,reg:{papiers,clients,params,modeles},setReg:{papiers:setPapiers,clients:setClients,params:setParams,modeles:setModeles}});
+  const sync=useSync({ofs,setOfs:setOfsRemote,reg:{papiers,clients,params,modeles},setReg:{papiers:setPapiers,clients:setClients,params:setParams,modeles:setModeles}});
   useEffect(()=>{if(!toast)return;const t=setTimeout(()=>setToast(''),3500);return()=>clearTimeout(t);},[toast]);
   const allClients=useMemo(()=>[...new Set([...clients,...ofs.map(o=>o.client).filter(Boolean)])].sort((a,b)=>a.localeCompare(b)),[clients,ofs]);
   const upd=(id,fn)=>setOfs(l=>ensureBats(l.map(o=>o.id===id?fn(o):o),params));
   const setEtat=(id,code,patch)=>upd(id,o=>{const e={...(o.etat||{})};const cur={...(e[code]||{}),...patch};Object.keys(cur).forEach(k=>cur[k]==null&&delete cur[k]);e[code]=cur;return{...o,etat:e};});
   const toggleDone=t=>{if(t.done)setEtat(t.ofId,t.code,{done:null,fixD:null,doneAt:null});else setEtat(t.ofId,t.code,{done:true,fixD:fixAt(t),doneAt:new Date().toISOString()});};
   const[todayTick,setTodayTick]=useState(0);
+  /* Annuler / rétablir (Ctrl+Z / Ctrl+Y) sur les OF */
+  
+  useEffect(()=>{const H=undoH.current;if(H.prev&&!H.skip&&H.prev!==ofs){H.past.push(H.prev);if(H.past.length>60)H.past.shift();H.fut=[];setHv(x=>x+1);}H.skip=false;H.prev=ofs;},[ofs]);
+  const undo=()=>{const H=undoH.current;if(!H.past.length)return;H.fut.push(ofs);H.skip=true;setOfs(H.past.pop());setHv(x=>x+1);setToast('Action annulée');};
+  const redo=()=>{const H=undoH.current;if(!H.fut.length)return;H.past.push(ofs);H.skip=true;setOfs(H.fut.pop());setHv(x=>x+1);setToast('Action rétablie');};
+  useEffect(()=>{const k=e=>{const tag=(e.target.tagName||'').toLowerCase();if(tag==='input'||tag==='textarea'||tag==='select'||e.target.isContentEditable)return;
+      if((e.ctrlKey||e.metaKey)&&!e.altKey){const c=e.key.toLowerCase();if(c==='z'&&!e.shiftKey){e.preventDefault();undo();}else if(c==='y'||(c==='z'&&e.shiftKey)){e.preventDefault();redo();}}};
+    window.addEventListener('keydown',k);return()=>window.removeEventListener('keydown',k);});
+
   const[gh,setGhS]=useState(()=>{try{const v=localStorage.getItem('lvsl-gh');return v?+v:null;}catch(e){return null;}});
   const setGh=v=>{setGhS(v);try{v==null?localStorage.removeItem('lvsl-gh'):localStorage.setItem('lvsl-gh',String(Math.round(v)));}catch(e){}};const[daily,setDaily]=useState(false);
   const fixAt=t=>{const nowW=cal.date2w(new Date());const day0=Math.floor(nowW/WD)*WD;const s=t.s>nowW?Math.max(day0,nowW-(t.e-t.s)):t.s;return cal.w2date(s).toISOString();};
@@ -576,18 +655,31 @@ function App(){
       return ensureBats(nl,params);});
     setEdit(null);setToast('OF enregistré');
   };
-  const move=(i,d)=>setOfs(l=>{const act=l.filter(o=>!o.archive);const j=i+d;if(j<0||j>=act.length)return l;const a=act[i],b=act[j];const n=[...l];const ia=n.indexOf(a),ib=n.indexOf(b);n[ia]=b;n[ib]=a;return ensureBats(n,params);});
+  const move=(i,d)=>setOfs(l=>{const act=l.filter(o=>!o.archive);const cible=act[i];if(!cible)return l;
+    const gid=o=>o.batDe&&act.some(p=>p.id===o.batDe)?o.batDe:o.id; /* un BAT est rangé avec son OF de production */
+    const groupes=[];act.forEach(o=>{const g=gid(o);let G=groupes.find(x=>x.id===g);if(!G){G={id:g,ofs:[]};groupes.push(G);}G.ofs.push(o);});
+    const k=groupes.findIndex(G=>G.id===gid(cible)),k2=k+d;if(k2<0||k2>=groupes.length)return l;
+    [groupes[k],groupes[k2]]=[groupes[k2],groupes[k]];
+    return ensureBats([...groupes.flatMap(G=>G.ofs),...l.filter(o=>o.archive)],params);});
   async function onFiles(files){
     const drafts=[],errs=[];
-    for(const f of files){try{const text=await pdfText(f);const r=parseDocument(text,papiers,todayIso());if(!r.length)errs.push(f.name);r.forEach(d=>drafts.push({...d,_file:f.name,_dup:ofs.some(o=>o.numero===d.numero&&o.titre===d.titre)}));}catch(e){errs.push(f.name);}}
+    for(const f of files){try{let r;
+      if(/\.eml$/i.test(f.name)||f.type==='message/rfc822'){const mail=parseEml(new Uint8Array(await f.arrayBuffer()));r=parseLaDecouverte(mail,papiers,todayIso());
+        const sansF=r.filter(d=>!d.largeur||!d.hauteur);
+        if(sansF.length){const pj=mail.att.filter(a=>/pdf/i.test(a.type)||/\.pdf$/i.test(a.name));const pi=pj.find(a=>!/couv/i.test(a.name))||pj[0];
+          if(pi){try{const pdf=await pdfjsLib.getDocument({data:s2b(pi.bin)}).promise;const v=(await pdf.getPage(1)).view;const mm=x=>Math.round(x*25.4/72);
+            const L=mm(v[2]-v[0]),H=mm(v[3]-v[1]);sansF.forEach(d=>{d.largeur=L;d.hauteur=H;d._fmtPdf=pi.name;if(!d.pages)d.pages=pdf.numPages;});}catch(e){}}}}
+      else{const text=await pdfText(f);r=parseDocument(text,papiers,todayIso());}
+      if(!r.length)errs.push(f.name);r.forEach(d=>drafts.push({...d,_file:f.name,_dup:ofs.some(o=>o.numero===d.numero&&o.titre===d.titre)}));}catch(e){errs.push(f.name);}}
     setImp({drafts,errs});
   }
-  const confirmImport=sel=>{const add=imp.drafts.filter((d,i)=>sel[i]);add.forEach(d=>{const{_file,_dup,...o}=d;saveOf({id:uid(),delai:params.delaiJ,etat:{},fichiersOk:false,...o});});setImp(null);setToast(add.length+' OF créé(s), hachurés tant que les fichiers ne sont pas validés');};
+  const confirmImport=(sel,drafts)=>{const add=drafts.filter((d,i)=>sel[i]);add.forEach(d=>{const{_file,_dup,_fmtPdf,_fmtDef,...o}=d;saveOf({id:uid(),delai:params.delaiJ,etat:{},fichiersOk:false,...o});});setImp(null);const h=add.filter(d=>!d.fichiersOk).length;setToast(add.length+' OF créé(s)'+(h?', dont '+h+' hachuré(s) tant que les fichiers ne sont pas validés':''));};
   return <div className="app">
     <header className="top">
       <div className="brand"><span className="eyebrow">Le Vent Se Lève · atelier</span><h1>Planning impression</h1>{window.SB_CONF&&<span className={'sync '+sync.etat} title={sync.detail||sync.msg}>{sync.etat==='ok'?'● Enregistré':sync.etat==='busy'?'● Enregistrement…':<>● {sync.msg} <button className="ib synbtn" onClick={sync.retry}>Réessayer</button>{sync.detail&&<small className="syndet">Détail : {sync.detail}</small>}</>}</span>}</div>
       <div className="actions">
-        <label className="btn btn-primary file"><i className="ic">⇪</i>Importer facture / devis<input id="pdfin" type="file" accept="application/pdf" multiple onChange={e=>{onFiles([...e.target.files]);e.target.value='';}}/></label>
+        <label className="btn btn-primary file"><i className="ic">⇪</i>Importer facture / devis / mail<input id="pdfin" type="file" accept="application/pdf,.eml,message/rfc822" multiple onChange={e=>{onFiles([...e.target.files]);e.target.value='';}}/></label>
+        <span className="undoctl"><button className="btn" onClick={undo} disabled={!undoH.current.past.length} title="Annuler (Ctrl+Z)">↶ Annuler</button><button className="btn" onClick={redo} disabled={!undoH.current.fut.length} title="Rétablir (Ctrl+Y)">↷ Rétablir</button></span>
         <button className="btn" onClick={()=>setTodayTick(x=>x+1)}><i className="ic">◉</i>Aujourd'hui</button>
         <button className="btn" onClick={()=>setDaily(true)}><i className="ic">☑</i>Tâches du jour</button>
         <button className="btn" onClick={()=>setHist(true)}><i className="ic">⟲</i>Historique <b className="cnt">{archives.length}</b></button>
@@ -630,8 +722,8 @@ function Gantt({height,scrollTick,onFocus,todayTick,focus,ofs,sched,cal,zoom,now
   const hours=[9,10,11,12,13,14,15,16,17,18,19];
   const down=(e,t)=>{e.currentTarget.setPointerCapture(e.pointerId);setDrag({t,x0:e.clientX,dx:0});};
   const mv=e=>{if(drag&&!drag.t.done)setDrag({...drag,dx:e.clientX-drag.x0});};
-  const up=(e,t)=>{if(!drag){return;}const d=drag;setDrag(null);if(Math.abs(d.dx)<5){onFocus(t.ofId);return;}onPin(t,Math.max(nowW,Math.round(t.s+d.dx/ppm)));};
-  return <section className="gantt" style={height?{flex:'none',height}:{flex:'none'}} aria-label="Planning machines">
+  const up=(e,t)=>{if(!drag){return;}const d=drag;setDrag(null);if(Math.abs(d.dx)<12){onFocus(t.ofId);return;}onPin(t,Math.max(nowW,Math.round(t.s+d.dx/ppm)));};
+  return <section className="gantt" style={height?{flex:'none',maxHeight:height}:{flex:'none'}} aria-label="Planning machines">
     <div className="gscroll" ref={scRef} onClick={e=>{if(!e.target.closest('.bar,.wait'))onFocus(null);}}>
       <div className="ginner" style={{width:W+LABW}}>
         <div className="ghead">
@@ -674,7 +766,7 @@ function Gantt({height,scrollTick,onFocus,todayTick,focus,ofs,sched,cal,zoom,now
     <div className="legend">
       <span><i className="sw"/>À faire</span><span><i className="sw hatch"/>Fichiers client non validés</span><span><i className="sw done"/>Fait</span>
       <span><i className="sw late"/>Expédition en retard</span><span><i className="sw launch"/>Lancement presse (opérateur)</span><span><i className="sw waitsw"/>Séchage / envoi</span>
-      <span><i className="sw selsw"/>OF sélectionné</span><span><i className="sw midisw"/>Midi, soir et nuit : seule la presse tourne</span><span className="hint">Glisser une tâche = « pas avant » ; 1 clic = entourer l'OF · double-clic = ouvrir l'OF (marquer fait)</span>
+      <span><i className="sw selsw"/>OF sélectionné</span><span>📌 Glissée plus tard (« pas avant »)</span><span><i className="sw midisw"/>Midi, soir et nuit : seule la presse tourne</span><span className="hint">Glisser une tâche = « pas avant » ; 1 clic = entourer l'OF · double-clic = ouvrir l'OF (marquer fait)</span>
     </div>
   </section>;
 }
@@ -688,7 +780,7 @@ function OfList({focus,onFocus,ofs,sched,params,onEdit,onMove,upd,onDel}){
       <tbody>{ofs.map((o,i)=>{const s=sched.ofs[o.id];const[bg,fg]=OF_COLORS[o.couleurIdx||0];if(!s)return null;
         return <tr key={o.id} className={'ofrow'+(s.retard?' rlate':'')+(focus===o.id?' sel':'')} style={{'--bg':bg,'--fg':fg}} onClick={e=>{if(e.target.closest('button'))return;onFocus(o.id);}} onDoubleClick={e=>{if(e.target.closest('button'))return;onEdit(o);}} title="1 clic : voir les étapes · double-clic : ouvrir l'OF">
           <td className="prio"><button className="ib" aria-label="Monter" onClick={()=>onMove(i,-1)}>▲</button><button className="ib" aria-label="Descendre" onClick={()=>onMove(i,1)}>▼</button></td>
-          <td>{o.numero}<span className={'src '+o.source}>{o.source}</span></td>
+          <td className={o.fichiersOk?'':'hatchcell'}>{o.numero}<span className={'src '+o.source}>{o.source}</span></td>
           <td>{o.client}</td><td className="tt">{o.titre}{o.enlevement&&!o.batDe&&<span className="tag">enlèvement</span>}{o.type==='autre'&&<span className="tag">hors livre</span>}</td>
           <td className="n">{o.quantite}</td><td className="n">{o.pages}</td>
           <td className={o.fichiersOk?'':'hatchcell'}><button className={'chip '+(o.fichiersOk?'ok':'ko')} onClick={()=>upd(o.id,x=>({...x,fichiersOk:!x.fichiersOk}))}>{o.exemplaire?(o.fichiersOk?'BAT validé':'BAT à valider'):(o.fichiersOk?'OK':'En attente')}</button></td>
@@ -774,7 +866,7 @@ function OfForm({of,cal,fixAt,tasks,params,papiers,clients,modeles,onAddPapier,o
       {newPap&&<div className="addrow"><input id="f-np" className="inp" autoFocus placeholder="Nom du nouveau papier, ex. SRA3 Munken Premium Cream 100 g" onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();const v=e.target.value.trim();if(v){onAddPapier(v);s(newPap,v);}setNewPap(null);}}}/><button type="button" className="btn" onClick={()=>{const v=document.getElementById('f-np').value.trim();if(v){onAddPapier(v);s(newPap,v);}setNewPap(null);}}>Ajouter</button></div>}
       </section>
       <section className="fsec"><h4 className="fsh c3">Délais, BAT et livraison</h4><div className="g4">
-        {!isBat?<Fld l="Exemplaire client avant impression"><select id="f-ex" className="inp" value={f.exemplaire?'1':'0'} onChange={e=>s('exemplaire',e.target.value==='1')}><option value="0">Non</option><option value="1">Oui : OF BAT + OF production</option></select>
+        {!isBat?<Fld l="Exemplaire client avant impression"><select id="f-ex" className={"inp exsel "+(f.exemplaire?"oui":"non")} value={f.exemplaire?'1':'0'} onChange={e=>s('exemplaire',e.target.value==='1')}><option value="0">Non</option><option value="1">Oui : OF BAT + OF production</option></select>
           {f.exemplaire&&<div className="sub2 inline"><span className="lbl">Production après le BAT de</span><input id="f-att" className="inp n" type="number" min="0" value={f.attenteBAT??params.attenteBAT} onChange={e=>s('attenteBAT',e.target.value)}/><span className="lbl">j ouvrés</span></div>}</Fld>:<div/>}
         <Fld l="Date de commande"><input id="f-dc" className="inp" type="date" value={f.dateCommande||''} onChange={e=>s('dateCommande',e.target.value)}/></Fld>
         <Fld l="Délai client (jours calendaires)"><input id="f-d" className="inp" type="number" min="1" value={f.delai||14} onChange={e=>{s('delai',e.target.value);s('livraison','');}}/></Fld>
@@ -782,7 +874,7 @@ function OfForm({of,cal,fixAt,tasks,params,papiers,clients,modeles,onAddPapier,o
           <label className="under"><input id="f-enl" type="checkbox" checked={!!f.enlevement} onChange={e=>s('enlevement',e.target.checked)}/> Enlèvement sur site</label></Fld>
       </div>
       <div className={'checks valid '+(f.fichiersOk?'ok':'ko')}><label><input id="f-ok" type="checkbox" checked={!!f.fichiersOk} onChange={e=>s('fichiersOk',e.target.checked)}/> {f.exemplaire?'BAT validé par le client (fichiers de production OK)':'Fichiers client validés'}</label>
-        <span>{f.fichiersOk?'L\'OF peut démarrer.':'Sans cette case, l\'OF est hachuré et ne peut pas démarrer.'} {isBat?<>BAT à envoyer au plus tard le <b>{fmtD(lim)}</b> ({params.delaiBATJO} j ouvrés après la commande).</>:!lim?<>Les {f.delai||params.delaiJ} jours de délai client partiront du jour où tu coches « BAT validé ».</>:<>{f.enlevement?'Fin de fabrication':'Expédition'} au plus tard le <b>{fmtD(lim)}</b>{f.enlevement?'':' (livraison '+fmtD(liv)+' moins '+params.transportJO+' j ouvrés de transport)'}{f.exemplaire&&f.batValideLe?', délai compté depuis la validation du BAT le '+fmtD(new Date(f.batValideLe+'T12:00')):''}.</>}</span></div>
+        <span>{f.fichiersOk?'L\'OF peut démarrer.':'Sans cette case, l\'OF est hachuré et ne peut pas démarrer.'} {isBat?<>BAT à envoyer au plus tard le <b>{fmtD(lim)}</b> ({params.delaiBATJO} j ouvrés après la commande).</>:!lim?<>Les {f.delai||params.delaiJ} jours de délai client partiront du jour où tu coches « BAT validé ».</>:<>{f.enlevement?'Fin de fabrication':'Expédition'} au plus tard le <b>{fmtD(lim)}</b>{f.enlevement?'':' (livraison '+fmtD(liv)+' moins '+(f.transportJO??params.transportJO)+' j ouvrés de transport)'}{f.exemplaire&&f.batValideLe?', délai compté depuis la validation du BAT le '+fmtD(new Date(f.batValideLe+'T12:00')):''}.</>}</span></div>
       </section>
     </>}
     {tab==='ops'&&<section className="fsec opsec">
@@ -801,6 +893,7 @@ function OfForm({of,cal,fixAt,tasks,params,papiers,clients,modeles,onAddPapier,o
           <td className="opact">{editable&&<><button type="button" className="ib" aria-label="Monter" title="Monter" onClick={()=>moveOp(o.code,-1)}>▲</button><button type="button" className="ib" aria-label="Descendre" title="Descendre" onClick={()=>moveOp(o.code,1)}>▼</button><button type="button" className="ib" aria-label="Retirer" title="Retirer" onClick={()=>delOp(o.code)}>✕</button></>}
             {e.nbD&&!e.done&&<button type="button" className="btn sm" onClick={()=>setEt(o.code,cur=>{delete cur.nbD;return cur;})}>Replacer au plus tôt</button>}</td></tr></React.Fragment>;})}
       </tbody></table></div>
+      {ops.some(o=>((f.etat||{})[o.code]||{}).nbD)&&<div className="row pinrow"><span>📌 Certaines opérations ont été glissées plus tard sur le planning (position « pas avant »).</span><button type="button" className="btn sm" onClick={()=>setF(x=>{const et={};Object.entries(x.etat||{}).forEach(([k,v])=>{const c={...v};delete c.nbD;et[k]=c;});return{...x,etat:et};})}>Tout replacer au plus tôt</button></div>}
       <div className="row addop"><button type="button" className="btn sm btn-dark" onClick={addOp}>+ Ajouter une opération</button>
         {!man&&<><span className="lbl">après</span><select id="f-ins" className="inp" value={insAfter||ops[ops.length-1]?.code||''} onChange={e=>setInsAfter(e.target.value)}>{ops.map(o=><option key={o.code} value={o.code}>{o.label}</option>)}</select></>}
         <span className="note">{man?'Les opérations s\'enchaînent dans l\'ordre du tableau (▲▼ pour déplacer).':'Une opération ajoutée s\'insère dans l\'enchaînement ; ▲▼ la déplace entre deux opérations.'} Un pelliculage ajoute 12 h de séchage.</span></div>
@@ -898,18 +991,26 @@ function Historique({ofs,onClose,onDel}){
 }
 const Fld=({l,children})=><div className="fld"><span className="lbl">{l}</span>{children}</div>;
 function ImportReview({imp,onOk,onClose}){
-  const[sel,setSel]=useState(imp.drafts.map(d=>!d._dup));
+  const[sel,setSel]=useState(imp.drafts.map(d=>!d._dup)),[dr,setDr]=useState(imp.drafts);
+  const set=(i,fn)=>setDr(l=>l.map((d,j)=>j===i?fn(d):d));
+  const manque=d=>(d.ld&&!d.ldKind)||!d.largeur||!d.hauteur;
+  const bloque=dr.some((d,i)=>sel[i]&&manque(d));
   return <div className="overlay"><div className="modal small" role="dialog" aria-label="Import">
-    <div className="mhead"><div><span className="eyebrow">Import PDF</span><h3>{imp.drafts.length} OF détecté(s)</h3></div><button className="ib x" onClick={onClose} aria-label="Fermer">✕</button></div>
+    <div className="mhead"><div><span className="eyebrow">Import facture · devis · mail</span><h3>{dr.length} OF détecté(s)</h3></div><button className="ib x" onClick={onClose} aria-label="Fermer">✕</button></div>
     <div className="mbody">
       {imp.errs.length>0&&<p className="warn">Aucun livre reconnu dans : {imp.errs.join(', ')}. Pour un travail hors livre, crée l'OF à la main.</p>}
       <div className="tblwrap impwrap"><table className="imptbl"><thead><tr><th/><th>Source</th><th>N°</th><th>Client</th><th>Titre</th><th>Format</th><th className="n">Qté</th><th className="n">Pages</th><th>Intérieur</th><th>Pellic.</th><th>Ex.</th></tr></thead>
-      <tbody>{imp.drafts.map((d,i)=><tr key={i}><td><input id={'imp'+i} type="checkbox" checked={sel[i]} onChange={e=>setSel(s=>s.map((v,j)=>j===i?e.target.checked:v))}/></td>
-        <td>{d.source}</td><td>{d.numero}{d._dup&&<span className="tag">déjà présent</span>}</td><td>{d.client}</td><td>{d.titre}</td><td>{d.largeur}×{d.hauteur}</td><td className="n">{d.quantite}</td><td className="n">{d.pages}</td>
+      <tbody>{dr.map((d,i)=><tr key={i}><td><input id={'imp'+i} type="checkbox" checked={sel[i]} onChange={e=>setSel(s=>s.map((v,j)=>j===i?e.target.checked:v))}/></td>
+        <td>{d.ld?<>Mail<select id={'ldk'+i} className={'inp ldk'+(d.ldKind?'':' need')} value={d.ldKind||''} onChange={e=>set(i,x=>ldApply(x,e.target.value,null))} aria-label="Épreuve ou programme"><option value="">À choisir…</option><option value="epreuve">Épreuve</option><option value="programme">Programme</option></select></>:d.source}</td>
+        <td>{d.numero}{d._dup&&<span className="tag">déjà présent</span>}</td><td>{d.client}</td><td>{d.titre}</td>
+        <td>{d.largeur&&d.hauteur&&!d._edF?<>{d.largeur}×{d.hauteur}{d._fmtPdf?<small className="muted blk" title={d._fmtPdf}>lu sur le PDF joint</small>:d._fmtDef?<small className="muted blk">A4 par défaut (programme)</small>:null}</>:
+          <span className="fmtin"><input id={'impl'+i} className={'inp n'+(d.largeur?'':' need')} type="number" placeholder="L" value={d.largeur} onChange={e=>set(i,x=>({...x,_edF:1,largeur:+e.target.value||''}))} aria-label="Largeur (mm)"/>×<input id={'imph'+i} className={'inp n'+(d.hauteur?'':' need')} type="number" placeholder="H" value={d.hauteur} onChange={e=>set(i,x=>({...x,_edF:1,hauteur:+e.target.value||''}))} aria-label="Hauteur (mm)"/></span>}</td>
+        <td className="n">{d.quantite}</td><td className="n">{d.pages}</td>
         <td>{d.couleur==='NB'?'N/B':'Couleur'} · {d.papierInt}</td><td>{d.pelliculage}</td><td>{d.exemplaire?'Oui':'Non'}</td></tr>)}</tbody></table></div>
-      <p className="note">Les OF importés arrivent hachurés : coche « Fichiers OK » quand les fichiers du client sont validés.</p>
+      {bloque?<p className="warn">Complète les cases en orange (type épreuve / programme, format en mm) avant de créer les OF.</p>:
+      <p className="note">Les factures et devis arrivent hachurés : coche « Fichiers OK » quand les fichiers du client sont validés. Les mails La Découverte arrivent avec les fichiers validés et une livraison à 3 jours ouvrés (2 de fabrication + 1 de transport).</p>}
     </div>
-    <div className="mfoot"><button className="btn" onClick={onClose}>Annuler</button><button className="btn btn-primary" onClick={()=>onOk(sel)} disabled={!sel.some(Boolean)}>Créer les OF</button></div>
+    <div className="mfoot"><button className="btn" onClick={onClose}>Annuler</button><button className="btn btn-primary" onClick={()=>onOk(sel,dr.map(({_edF,...d})=>d))} disabled={!sel.some(Boolean)||bloque}>Créer les OF</button></div>
   </div></div>;
 }
 function Modeles({modeles,setModeles}){
