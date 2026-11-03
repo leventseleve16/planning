@@ -800,7 +800,7 @@ function OfList({focus,onFocus,ofs,sched,params,onEdit,onMove,upd,onDel}){
       <tbody>{ofs.map((o,i)=>{const s=sched.ofs[o.id];const[bg,fg]=OF_COLORS[o.couleurIdx||0];if(!s)return null;
         return <tr key={o.id} className={'ofrow'+(s.retard?' rlate':'')+(focus===o.id?' sel':'')} style={{'--bg':bg,'--fg':fg}} onClick={e=>{if(e.target.closest('button'))return;onFocus(o.id);}} onDoubleClick={e=>{if(e.target.closest('button'))return;onEdit(o);}} title="1 clic : voir les étapes · double-clic : ouvrir l'OF">
           <td className="prio"><button className="ib" aria-label="Monter" onClick={()=>onMove(i,-1)}>▲</button><button className="ib" aria-label="Descendre" onClick={()=>onMove(i,1)}>▼</button></td>
-          <td className={o.fichiersOk?'':'hatchcell'}>{o.numero}<span className={'src '+o.source}>{o.source}</span></td>
+          <td>{o.numero}<span className={'src '+o.source}>{o.source}</span></td>
           <td>{o.client}</td><td className="tt">{o.titre}{o.enlevement&&!o.batDe&&<span className="tag">enlèvement</span>}{o.type==='autre'&&<span className="tag">hors livre</span>}</td>
           <td className="n">{o.quantite}</td><td className="n">{o.pages}</td>
           <td className={o.fichiersOk?'':'hatchcell'}><button className={'chip '+(o.fichiersOk?'ok':'ko')} onClick={()=>upd(o.id,x=>({...x,fichiersOk:!x.fichiersOk}))}>{o.exemplaire?(o.fichiersOk?'BAT validé':'BAT à valider'):(o.fichiersOk?'OK':'En attente')}</button></td>
