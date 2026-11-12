@@ -621,17 +621,16 @@ function ensureBats(list0,P){
   let l=list.filter(o=>!o.batDe||o.archive||list.some(p=>p.id===o.batDe&&p.exemplaire));
   const out=[];
   l.forEach(o=>{
-    if(o.batDe){if(o.archive||!l.some(p=>p.id===o.batDe&&!p.archive))out.push(o);return;}
+    if(o.batDe){out.push(o);return;} /* l'OF BAT garde sa place (rangé par délai comme les autres) */
     if(o.exemplaire){
       const old=l.find(x=>x.batDe===o.id);
-      if(old){if(!old.archive)out.push(old);} /* BAT archivé : déjà repris tel quel, ne pas le dupliquer ni en recréer un */
-      else{
+      if(!old){
         const b={id:uid(),etat:{},surcharges:{},fichiersOk:false,batDe:o.id,exemplaire:false,quantite:1,titre:o.titre+' · exemplaire BAT',enlevement:false};
         SPEC.forEach(k=>b[k]=o[k]);b.papierInt2=o.papierInt2;b.pagesInt2=o.pagesInt2;out.push(b);}
     }
     out.push(o);
   });
-  const vus=new Set();return stampBat(out.filter(o=>{if(vus.has(o.id))return false;vus.add(o.id);return true;}));
+  const vus=new Set();return stampBat(batAvant(out.filter(o=>{if(vus.has(o.id))return false;vus.add(o.id);return true;})));
 }
 function stampBat(list){return list.map(o=>{if(!o.exemplaire||o.batDe)return o;if(o.fichiersOk&&!o.batValideLe)return{...o,batValideLe:todayIso()};if(!o.fichiersOk&&o.batValideLe){const{batValideLe,...r}=o;return r;}return o;});}
 function useNow(){const[n,setN]=useState(new Date());useEffect(()=>{const t=setInterval(()=>setN(new Date()),60000);return()=>clearInterval(t);},[]);return n;}
