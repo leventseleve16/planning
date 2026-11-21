@@ -642,11 +642,14 @@ function groupesOF(act){return act.map(o=>({id:o.id,ofs:[o]}));}
 function batAvant(l){const r=[...l];r.filter(o=>o.batDe&&!o.archive).forEach(b=>{const ip=r.findIndex(o=>o.id===b.batDe&&!o.archive),ib=r.indexOf(b);if(ip>=0&&ip<ib){r.splice(ib,1);r.splice(ip,0,b);}});return r;}
 const batApres=(l)=>l.some((o,i)=>o.batDe&&!o.archive&&l.slice(0,i).some(p=>p.id===o.batDe&&!p.archive));
 function limiteStatut(o,P){if(o.fichiersOk)return dateExpeLimite(o,P);return ((o.etat||{}).BATNUM||{}).done?null:batLimite(o,P);} /* délai selon le statut du BAT */
-function cleGroupe(g,P){return{v:g.ofs.some(o=>o.fichiersOk)?0:1,d:Math.min(...g.ofs.map(o=>{const d=limiteStatut(o,P);return d?d.getTime():Infinity;}))};}
-const cmpCle=(x,y)=>x.v-y.v||(x.d===y.d?0:x.d<y.d?-1:1);
+/* Tri par délai seul (selon le statut du BAT) ; sans délai (en attente de validation) en fin de liste ; à date égale, ordre d'arrivée des commandes */
+function cleGroupe(g,P){const o=g.ofs[0];const d=limiteStatut(o,P);return{d:d?d.getTime():Infinity,c:o.dateCommande||''};}
+const cmpCle=(x,y)=>(x.d===y.d?0:x.d<y.d?-1:1)||(x.c<y.c?-1:x.c>y.c?1:0);
 /* Range les OF : ids = OF à replacer (création, validation) ; null = tout retrier. L'ordre manuel des autres est conservé. */
 function ranger(l,P,ids){const act=l.filter(o=>!o.archive),arch=l.filter(o=>o.archive);let G=groupesOF(act);
-  if(!ids)G=G.map((g,i)=>({g,i,k:cleGroupe(g,P)})).sort((a,b)=>cmpCle(a.k,b.k)||a.i-b.i).map(x=>x.g);
+  if(!ids){/* Retrier : les OF déplacés à la main (📌) gardent leur place, les autres sont rangés par délai autour */
+    const libres=G.map((g,i)=>({g,i,k:cleGroupe(g,P)})).filter(x=>!x.g.ofs[0].manuel).sort((a,b)=>cmpCle(a.k,b.k)||a.i-b.i).map(x=>x.g);
+    G=G.map(g=>g.ofs[0].manuel?g:libres.shift());}
   else{const mv=G.filter(g=>g.ofs.some(o=>ids.includes(o.id)));const rest=G.filter(g=>!mv.includes(g));
     mv.forEach(g=>{const k=cleGroupe(g,P);let i=rest.findIndex(h=>cmpCle(cleGroupe(h,P),k)>0);if(i<0)i=rest.length;rest.splice(i,0,g);});G=rest;}
   return batAvant([...G.flatMap(g=>g.ofs),...arch]);}
@@ -701,7 +704,8 @@ function App(){
   useEffect(()=>{if(!toast)return;const t=setTimeout(()=>setToast(''),3500);return()=>clearTimeout(t);},[toast]);
   const allClients=useMemo(()=>[...new Set([...clients,...ofs.map(o=>o.client).filter(Boolean)])].sort((a,b)=>a.localeCompare(b)),[clients,ofs]);
   const upd=(id,fn)=>setOfs(l=>ensureBats(l.map(o=>o.id===id?fn(o):o),params));
-  const setEtat=(id,code,patch)=>upd(id,o=>{const e={...(o.etat||{})};const cur={...(e[code]||{}),...patch};Object.keys(cur).forEach(k=>cur[k]==null&&delete cur[k]);e[code]=cur;return{...o,etat:e};});
+  const setEtat=(id,code,patch)=>{upd(id,o=>{const e={...(o.etat||{})};const cur={...(e[code]||{}),...patch};Object.keys(cur).forEach(k=>cur[k]==null&&delete cur[k]);e[code]=cur;return{...o,etat:e};});
+    if(code==='BATNUM'&&'done' in patch)setOfs(l=>ranger(l.map(o=>o.id===id?{...o,manuel:false}:o),params,[id]));}; /* BAT envoyé / remis à envoyer : le délai change, l'OF est replacé */
   const toggleDone=t=>{if(t.done)setEtat(t.ofId,t.code,{done:null,fixD:null,doneAt:null,auto:null});else setEtat(t.ofId,t.code,{done:true,fixD:fixAt(t),doneAt:new Date().toISOString()});};
   const[todayTick,setTodayTick]=useState(0);
   /* Annuler / rétablir (Ctrl+Z / Ctrl+Y) sur les OF */
@@ -723,24 +727,24 @@ function App(){
       else nl=[...l,{...of,couleurIdx:of.couleurIdx??(l.length%OF_COLORS.length)}];
       nl=ensureBats(nl,params);
       /* rangement automatique à la création et quand la validation change : validés en haut, puis par date d'expédition au plus tard */
-      if(!avant||!!avant.fichiersOk!==!!of.fichiersOk)nl=ranger(nl,params,[of.id]);
+      const bnD=o=>!!(((o||{}).etat||{}).BATNUM||{}).done;
+      if(!avant||!!avant.fichiersOk!==!!of.fichiersOk||bnD(avant)!==bnD(of)||avant.dateCommande!==of.dateCommande){nl=nl.map(o=>o.id===of.id?{...o,manuel:false}:o);nl=ranger(nl,params,[of.id]);}
       return nl;});
     setEdit(null);setToast('OF enregistré');
   };
   const move=(i,d)=>{
     {const act=ofs.filter(o=>!o.archive),gr=groupesOF(act),cible=act[i];if(cible){const k=gr.findIndex(G=>G.ofs.includes(cible)),k2=k+d;
-      if(k2>=0&&k2<gr.length&&cleGroupe(gr[k],params).v!==cleGroupe(gr[k2],params).v){setToast(cleGroupe(gr[k],params).v?'Un OF en attente reste sous les OF validés':'Un OF validé reste au-dessus des OF en attente');return;}
       if(k2>=0&&k2<gr.length){const a=gr[k].ofs[0],b=gr[k2].ofs[0];if((a.batDe===b.id&&d>0)||(b.batDe===a.id&&d<0)){setToast('L\'OF BAT doit toujours passer avant son OF de production');return;}}}}
     setOfs(l=>{const act=l.filter(o=>!o.archive);const cible=act[i];if(!cible)return l;
     const groupes=groupesOF(act);
     const k=groupes.findIndex(G=>G.ofs.includes(cible)),k2=k+d;if(k2<0||k2>=groupes.length)return l;
-    [groupes[k],groupes[k2]]=[groupes[k2],groupes[k]];
+    [groupes[k],groupes[k2]]=[groupes[k2],groupes[k]];groupes[k2]={...groupes[k2],ofs:groupes[k2].ofs.map(o=>({...o,manuel:true}))}; /* 📌 placé à la main */
     return ensureBats([...groupes.flatMap(G=>G.ofs),...l.filter(o=>o.archive)],params);});};
-  const retrier=()=>{setOfs(l=>ranger(l,params,null));setToast('OF retriés : validés en haut, puis par date d\'expédition au plus tard');};
+  const retrier=()=>{setOfs(l=>ranger(l,params,null));setToast('OF retriés par délai (les OF 📌 placés à la main gardent leur place)');};
   /* Statut du BAT : À envoyer → Envoyé (en attente validation, date du clic) → Validé ; un clic sur Validé revient à « en attente » */
   const toggleOk=id=>{const o0=ofs.find(o=>o.id===id);if(!o0)return;const st=bnEtat(o0);
     if(st==='env'){const t=sched.tasks.find(x=>x.ofId===id&&x.code==='BATNUM');setEtat(id,'BATNUM',{done:true,auto:null,doneAt:new Date().toISOString(),fixD:t?fixAt(t):new Date().toISOString()});return;}
-    setOfs(l=>ranger(ensureBats(l.map(o=>o.id===id?(st==='att'&&!o.ld?{...o,fichiersOk:true,batValideLe:todayIso(),livraison:''}:{...o,fichiersOk:st==='att'}):o),params),params,[id]));};
+    setOfs(l=>ranger(ensureBats(l.map(o=>o.id===id?(st==='att'&&!o.ld?{...o,manuel:false,fichiersOk:true,batValideLe:todayIso(),livraison:''}:{...o,fichiersOk:st==='att'}):o),params),params,[id]));};
   async function onFiles(files){
     const drafts=[],errs=[];
     for(const f of files){try{let r;
@@ -857,12 +861,12 @@ function OfList({focus,onFocus,ofs,sched,params,onEdit,onMove,upd,onDel,onToggle
   const qq=nq(q).trim();const vis=o=>!qq||[o.client,o.numero,o.titre].some(v=>nq(v).includes(qq));const nVis=ofs.filter(vis).length;
   const[confirm,setConfirm]=useState(null);
   return <section className="oflist" aria-label="Ordres de fabrication">
-    <div className="olhead"><h2>Ordres de fabrication <small>{qq?nVis+' / '+ofs.length:ofs.length}</small></h2><input id="of-search" className="inp ofsearch" type="search" value={q} onChange={e=>setQ(e.target.value)} placeholder="Rechercher : client, n° de commande, titre…" aria-label="Rechercher un OF"/><button className="btn sm" onClick={onSort} title="Validés en haut, puis par date d'expédition au plus tard">⇅ Retrier par délai</button>{focus&&<button className="btn sm" onClick={()=>onFocus(null)}>Afficher tous les OF</button>}</div>
+    <div className="olhead"><h2>Ordres de fabrication <small>{qq?nVis+' / '+ofs.length:ofs.length}</small></h2><input id="of-search" className="inp ofsearch" type="search" value={q} onChange={e=>setQ(e.target.value)} placeholder="Rechercher : client, n° de commande, titre…" aria-label="Rechercher un OF"/><button className="btn sm" onClick={onSort} title="Par délai selon le statut du BAT (envoi du BAT, puis expédition) ; sans délai en fin de liste ; les OF 📌 gardent leur place">⇅ Retrier par délai</button>{focus&&<button className="btn sm" onClick={()=>onFocus(null)}>Afficher tous les OF</button>}</div>
     <div className="tblwrap"><table>
       <thead><tr><th>Prio</th><th>N° commande</th><th>Client</th><th>Titre</th><th className="n">Qté</th><th className="n">Pages</th><th>BAT</th><th>Exemplaire</th><th>Avancement</th><th>Fin prévue</th><th>Expé. au plus tard</th><th>Livraison</th><th/></tr></thead>
       <tbody>{ofs.map((o,i)=>{const s=sched.ofs[o.id];const[bg,fg]=OF_COLORS[o.couleurIdx||0];if(!s||!vis(o))return null;
         return <tr key={o.id} className={'ofrow'+(s.retard?' rlate':'')+(focus===o.id?' sel':'')} style={{'--bg':bg,'--fg':fg}} onClick={e=>{if(e.target.closest('button'))return;onFocus(o.id);}} onDoubleClick={e=>{if(e.target.closest('button'))return;onEdit(o);}} title="1 clic : voir les étapes · double-clic : ouvrir l'OF">
-          <td className="prio"><button className="ib" aria-label="Monter" onClick={()=>onMove(i,-1)}>▲</button><button className="ib" aria-label="Descendre" onClick={()=>onMove(i,1)}>▼</button></td>
+          <td className="prio"><button className="ib" aria-label="Monter" onClick={()=>onMove(i,-1)}>▲</button><button className="ib" aria-label="Descendre" onClick={()=>onMove(i,1)}>▼</button>{o.manuel&&<button className="ib pin" title="Placé à la main : garde sa place au « Retrier par délai ». Clic : le remettre au tri par délai" onClick={e=>{e.stopPropagation();upd(o.id,x=>({...x,manuel:false}));}}>📌</button>}</td>
           <td>{o.numero}<span className={'src '+o.source}>{o.source}</span></td>
           <td>{o.client}</td><td className="tt">{o.titre}{o.commentaire&&<span className="tag comtag" title={o.commentaire}>💬</span>}{o.enlevement&&!o.batDe&&<span className="tag">enlèvement</span>}{o.type==='autre'&&<span className="tag">hors livre</span>}</td>
           <td className="n">{o.quantite}</td><td className="n">{o.pages}</td>
